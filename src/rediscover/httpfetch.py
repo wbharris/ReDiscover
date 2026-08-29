@@ -6,7 +6,7 @@ import ssl
 import urllib.error
 import urllib.request
 
-UA = "ReDiscover/0.4.1 (+https://github.com/wbharris/ReDiscover)"
+UA = "ReDiscover/0.4.2 (+https://github.com/wbharris/ReDiscover)"
 
 
 def http_get(

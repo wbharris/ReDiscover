@@ -11,12 +11,20 @@ import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from rediscover.kali import arp_scan_needs_patch, msf_needs_patch, patch_update_sh
+from rediscover.kali import (
+    active_sh_needs_patch,
+    arp_scan_needs_patch,
+    msf_needs_patch,
+    patch_active_sh,
+    patch_update_sh,
+)
 from rediscover.tools import which
 
 DEFAULT_DISCOVER = Path("/opt/discover")
 SUDOERS_DROPIN = Path("/etc/sudoers.d/rediscover")
 SECURE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+LIBPOSTAL_DIR = Path("/usr/share/libpostal/transliteration")
+LIBPOSTAL_ALT = Path("/var/lib/libpostal/transliteration")
 
 
 @dataclass
@@ -215,7 +223,91 @@ def diagnose(discover_root: Path | None = None) -> list[Finding]:
         )
     )
 
+    postal_ok = LIBPOSTAL_DIR.is_dir() or LIBPOSTAL_ALT.is_dir()
+    findings.append(
+        Finding(
+            id="libpostal-data",
+            title="libpostal data (Kali amass wrapper skips sudo)",
+            ok=postal_ok,
+            detail=str(LIBPOSTAL_DIR if LIBPOSTAL_DIR.is_dir() else LIBPOSTAL_ALT),
+            fixable=True,
+        )
+    )
+
+    uv_link = Path("/usr/local/bin/uv")
+    op_uv = Path(f"/home/{_operator()}/.local/bin/uv")
+    findings.append(
+        Finding(
+            id="uv-path",
+            title="uv on /usr/local/bin for Discover theHarvester",
+            ok=uv_link.is_file(),
+            detail=(
+                str(uv_link.resolve())
+                if uv_link.is_file()
+                else (
+                    f"{op_uv} not linked into /usr/local/bin"
+                    if op_uv.is_file()
+                    else "uv not installed"
+                )
+            ),
+            fixable=op_uv.is_file() or uv_link.is_file(),
+        )
+    )
+
+    active_sh = root / "recon" / "active.sh"
+    active_text = _read(active_sh)
+    needs_active = bool(active_text) and active_sh_needs_patch(active_text)
+    findings.append(
+        Finding(
+            id="active-sh-loopback",
+            title="Discover Active treats 127.0.0.1 as private",
+            ok=bool(active_text) and not needs_active,
+            detail=(
+                "active.sh missing"
+                if not active_text
+                else ("needs loopback/link-local skip" if needs_active else str(active_sh))
+            ),
+            fixable=bool(active_text) and needs_active,
+        )
+    )
+
+    findings.append(
+        Finding(
+            id="sudo-nmap",
+            title="operator can sudo nmap without a password",
+            ok=_operator_can_sudo_nmap(),
+            detail=_sudo_nmap_detail(),
+            fixable=True,
+        )
+    )
+
     return findings
+
+
+def _libpostal_ok() -> bool:
+    return LIBPOSTAL_DIR.is_dir() or LIBPOSTAL_ALT.is_dir()
+
+
+def _operator_can_sudo_nmap() -> bool:
+    operator = _operator()
+    if operator == "root":
+        return True
+    proc = subprocess.run(
+        ["sudo", "-n", "-u", operator, "sudo", "-n", "nmap", "-V"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return True
+    text = _read(SUDOERS_DROPIN)
+    return "NOPASSWD:" in text and "/usr/bin/nmap" in text
+
+
+def _sudo_nmap_detail() -> str:
+    if _operator_can_sudo_nmap():
+        return f"{_operator()} NOPASSWD nmap"
+    return f"{_operator()} needs a password for sudo nmap (Discover Scanning)"
 
 
 def _fix_git(root: Path, finding: Finding) -> Finding:
@@ -295,14 +387,24 @@ def _fix_update_sh(root: Path, finding: Finding) -> Finding:
     return finding
 
 
+def _sudoers_body() -> str:
+    operator = _operator()
+    lines = [
+        "# Managed by ReDiscover doctor — Discover Update looks for tools in /usr/local/bin",
+        f'Defaults secure_path="{SECURE_PATH}"',
+    ]
+    if operator and operator != "root":
+        lines.append(
+            f"{operator} ALL=(root) NOPASSWD: /usr/bin/nmap, /usr/lib/nmap/nmap"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def _fix_sudoers(finding: Finding) -> Finding:
     if not _is_root():
         finding.detail = f"need root to write {SUDOERS_DROPIN}"
         return finding
-    body = (
-        "# Managed by ReDiscover doctor — Discover Update looks for tools in /usr/local/bin\n"
-        f'Defaults secure_path="{SECURE_PATH}"\n'
-    )
+    body = _sudoers_body()
     tmp = Path("/tmp/rediscover-sudoers")
     tmp.write_text(body, encoding="utf-8")
     tmp.chmod(0o440)
@@ -312,10 +414,84 @@ def _fix_sudoers(finding: Finding) -> Finding:
         return finding
     shutil.copy(tmp, SUDOERS_DROPIN)
     os.chmod(SUDOERS_DROPIN, 0o440)
-    sp = _secure_path_from_sudoers()
-    finding.ok = "/usr/local/bin" in (sp or "").split(":")
+    if finding.id == "sudo-nmap":
+        finding.ok = _operator_can_sudo_nmap()
+        finding.detail = _sudo_nmap_detail()
+    else:
+        sp = _secure_path_from_sudoers()
+        finding.ok = "/usr/local/bin" in (sp or "").split(":")
+        finding.detail = sp
     finding.fixed = finding.ok
-    finding.detail = sp
+    return finding
+
+
+def _fix_libpostal(finding: Finding) -> Finding:
+    if _libpostal_ok():
+        finding.ok = True
+        finding.fixed = False
+        finding.detail = str(LIBPOSTAL_DIR if LIBPOSTAL_DIR.is_dir() else LIBPOSTAL_ALT)
+        return finding
+    if not _is_root():
+        finding.detail = "need root: libpostal_data download all /var/lib/libpostal"
+        return finding
+    dest = Path("/var/lib/libpostal")
+    dest.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        ["libpostal_data", "download", "all", str(dest)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    finding.ok = _libpostal_ok()
+    finding.fixed = finding.ok
+    finding.detail = (
+        str(LIBPOSTAL_DIR if LIBPOSTAL_DIR.is_dir() else dest)
+        if finding.ok
+        else (proc.stderr or proc.stdout or "libpostal_data failed")[-400:]
+    )
+    return finding
+
+
+def _fix_uv(finding: Finding) -> Finding:
+    dest = Path("/usr/local/bin/uv")
+    if dest.is_file():
+        finding.ok = True
+        finding.fixed = False
+        finding.detail = str(dest)
+        return finding
+    if not _is_root():
+        finding.detail = "need root to link /usr/local/bin/uv"
+        return finding
+    operator = _operator()
+    src = Path(f"/home/{operator}/.local/bin/uv")
+    if not src.is_file():
+        finding.detail = f"missing {src}"
+        return finding
+    if dest.is_symlink() or dest.is_file():
+        dest.unlink()
+    dest.symlink_to(src)
+    dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    finding.ok = dest.is_file()
+    finding.fixed = finding.ok
+    finding.detail = f"{dest} -> {src}"
+    return finding
+
+
+def _fix_active_sh(root: Path, finding: Finding) -> Finding:
+    path = root / "recon" / "active.sh"
+    text = _read(path)
+    if not text:
+        finding.detail = f"missing {path}"
+        return finding
+    patched = patch_active_sh(text)
+    if patched == text:
+        finding.ok = not active_sh_needs_patch(text)
+        finding.detail = str(path)
+        return finding
+    path.write_text(patched, encoding="utf-8")
+    finding.ok = not active_sh_needs_patch(patched)
+    finding.fixed = finding.ok
+    finding.detail = f"patched {path} (loopback/link-local skip)"
     return finding
 
 
@@ -349,6 +525,14 @@ def apply_fixes(findings: list[Finding], discover_root: Path | None = None) -> l
             out.append(_fix_update_sh(root, finding))
         elif finding.id == "sudo-secure-path":
             out.append(_fix_sudoers(finding))
+        elif finding.id == "sudo-nmap":
+            out.append(_fix_sudoers(finding))
+        elif finding.id == "libpostal-data":
+            out.append(_fix_libpostal(finding))
+        elif finding.id == "uv-path":
+            out.append(_fix_uv(finding))
+        elif finding.id == "active-sh-loopback":
+            out.append(_fix_active_sh(root, finding))
         elif finding.id == "dnsrecon-venv":
             out.append(
                 _fix_venv(finding, Path("/opt/dnsrecon-venv"), Path("/opt/dnsrecon"), ["/opt/dnsrecon"])

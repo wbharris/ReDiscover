@@ -118,7 +118,7 @@ Skill: `.grok/skills/rediscover/SKILL.md` (`/rediscover`).
 2. `sudo rediscover doctor --fix` if anything FAIL
 3. `sudo /opt/discover/misc/update.sh` only when the operator asked for Discover Update (menu 18)
 
-`doctor --fix` repairs: git `safe.directory` / ownership, `/usr/local/bin/discover`, Kali `arp-scan`, Kali `update.sh` (arp-scan + apt Metasploit), sudo `secure_path` (`/etc/sudoers.d/rediscover`), DNSRecon/Sublist3r venvs. Upstream: https://github.com/leebaird/discover/issues/227
+`doctor --fix` repairs: git `safe.directory` / ownership, `/usr/local/bin/discover`, Kali `arp-scan`, Kali `update.sh` (arp-scan + apt Metasploit), sudo `secure_path` and NOPASSWD nmap (`/etc/sudoers.d/rediscover`), libpostal data (amass wrapper), `uv` on `/usr/local/bin`, Discover Active loopback skip, DNSRecon/Sublist3r venvs. Upstream: https://github.com/leebaird/discover/issues/227
 
 ## What v0.4 is
 

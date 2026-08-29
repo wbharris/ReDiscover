@@ -13,6 +13,7 @@ from rediscover.models import ToolRun
 DEFAULT_TIMEOUT = 60
 
 _EXTRA_BIN_DIRS = (
+    Path.home() / ".local" / "bin",
     Path.home() / "go" / "bin",
     Path("/root/go/bin"),
     Path("/usr/local/go/bin"),

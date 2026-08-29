@@ -1,7 +1,13 @@
 from pathlib import Path
 
 from rediscover.cli import main
-from rediscover.kali import arp_scan_needs_patch, msf_needs_patch, patch_update_sh
+from rediscover.kali import (
+    active_sh_needs_patch,
+    arp_scan_needs_patch,
+    msf_needs_patch,
+    patch_active_sh,
+    patch_update_sh,
+)
 
 
 UNPATCHED = """
@@ -49,3 +55,29 @@ def test_doctor_cli_json(capsys):
     out = capsys.readouterr().out
     assert '"id": "discover-root"' in out
     assert '"id": "sudo-secure-path"' in out
+    assert '"id": "libpostal-data"' in out
+    assert '"id": "active-sh-loopback"' in out
+    assert '"id": "sudo-nmap"' in out
+
+
+ACTIVE_SNIPPET = '''
+def is_private_ip(ip):
+    if not IPV4_RE.match(ip):
+        return False
+    octets = [int(part) for part in ip.split(".")]
+    if octets[0] == 10:
+        return True
+    if octets[0] == 172 and 16 <= octets[1] <= 31:
+        return True
+    if octets[0] == 192 and octets[1] == 168:
+        return True
+    return False
+'''
+
+
+def test_active_sh_loopback_patch():
+    assert active_sh_needs_patch(ACTIVE_SNIPPET)
+    once = patch_active_sh(ACTIVE_SNIPPET)
+    assert not active_sh_needs_patch(once)
+    assert "octets[0] == 127" in once
+    assert patch_active_sh(once) == once

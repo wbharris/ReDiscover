@@ -31,17 +31,25 @@ When the user wants Discover to work, or pastes an Update log:
 | `arp-scan` | `apt install arp-scan` (not `/questing`) |
 | `update-sh-kali` | Patch `misc/update.sh` for Kali arp-scan + apt Metasploit |
 | `sudo-secure-path` | `/etc/sudoers.d/rediscover` adds `/usr/local/bin` (stops “Installing gowitness” every run) |
+| `libpostal-data` | `libpostal_data download` so Kali amass does not sudo |
+| `uv-path` | Symlink `~/.local/bin/uv` → `/usr/local/bin/uv` |
+| `active-sh-loopback` | Patch Discover `active.sh` to skip 127.0.0.1 / 169.254 |
+| `sudo-nmap` | Operator NOPASSWD `/usr/bin/nmap` (Discover Scanning) |
 | `dnsrecon-venv` / `sublist3r-venv` | Recreate venv so `python -m pip` works after a Python upgrade |
 
 Do not install snapd for Metasploit on Kali. Apt `metasploit-framework` is the package.
 
 ## Recon
 
-Authorized targets only. Prefer iceroot. Put **`/usr/local/bin` before Python venvs** on PATH so ProjectDiscovery `httpx` wins over `/usr/bin/httpx` (Python). theHarvester lives at `~/theHarvester/.venv/bin` (CLI looks there).
+Authorized targets only. Prefer iceroot. PATH for Discover/ReDiscover recon:
+
+`/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:$HOME/theHarvester/.venv/bin`
+
+`/usr/local/bin` before Python venvs so ProjectDiscovery `httpx` wins over `/usr/bin/httpx` (Python). `$HOME/.local/bin` is **uv** (Discover Passive `uv sync`). theHarvester CLI is in `~/theHarvester/.venv/bin`.
 
 ```bash
 BIN=/home/iceroot/Projects/ReDiscover/.venv/bin/rediscover
-PATH="/usr/local/bin:/usr/bin:/bin:$HOME/theHarvester/.venv/bin"
+PATH="/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:$HOME/theHarvester/.venv/bin"
 
 $BIN recon example.com --quick --enrich
 $BIN recon ginandjuice.shop --quick --enrich --active --max-hosts 1
@@ -72,6 +80,28 @@ There is **no** SANS public recon student host. **Do not scan `sans.org` / `sans
 If the operator wants search-engine-shaped queries after that, use Grok `web_search` on `"DOMAIN"` and `site:DOMAIN`, merge as source `grok-public`, keep **unconfirmed**. Do not invent hosts. Do not treat lab fiction (e.g. Carlos Montoya on the shop) as people-OSINT.
 
 crt.sh often **502**s; say so, do not retry in a loop.
+
+### Discover Passive / Active / Scanning (not the numbered menu)
+
+Use `DISCOVER_SOURCE_ONLY=1` and the scripts. Do **not** pipe choices into `discover.sh`.
+
+```bash
+export DISCOVER_SOURCE_ONLY=1 HOME=/home/iceroot
+export PATH="/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:$HOME/theHarvester/.venv/bin"
+source /opt/discover/discover.sh
+
+# Domain → Passive (cannot be root)
+printf '%s\n%s\n' "Company" "ginandjuice.shop" | /opt/discover/recon/passive.sh
+# then Active (needs $HOME/data/DOMAIN from Passive)
+DISCOVER_REPORT="$HOME/data/ginandjuice.shop" /opt/discover/recon/active.sh
+
+# Scanning → IP (nmap.sh). sudo nmap: doctor --fix grants NOPASSWD nmap, or run this as root.
+# Answers: External, scan name, target, full TCP y, -sV y, delay 1, MSF aux n
+```
+
+Kali `/usr/bin/amass` is a wrapper that `sudo libpostal_data download` if `/usr/share/libpostal/transliteration` is missing. `doctor --fix` installs that data so Passive Amass does not prompt.
+
+Discover Active’s Python `is_private_ip` used to skip only RFC1918. `test.ginandjuice.shop → 127.0.0.1` was queued as public. `doctor --fix` patches `recon/active.sh` (loopback + link-local). `git pull` can wipe it; doctor reapplies.
 
 ### Honesty from live labs
 

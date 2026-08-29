@@ -64,3 +64,35 @@ def patch_update_sh(text: str) -> str:
         if start != -1 and nikto != -1 and start < nikto:
             out = out[:start] + MSF_KALI_BLOCK + "\n" + out[nikto:]
     return out
+
+
+# Discover Active only treats RFC1918 as private, so 127.0.0.1 is "public".
+_ACTIVE_RFC1918_TAILS = (
+    (
+        "    if octets[0] == 192 and octets[1] == 168:\n        return True\n    return False",
+        "    if octets[0] == 192 and octets[1] == 168:\n        return True\n    if octets[0] == 127:\n        return True\n    if octets[0] == 169 and octets[1] == 254:\n        return True\n    return False",
+    ),
+    (
+        "    if o[0] == 192 and o[1] == 168:\n        return True\n    return False",
+        "    if o[0] == 192 and o[1] == 168:\n        return True\n    if o[0] == 127:\n        return True\n    if o[0] == 169 and o[1] == 254:\n        return True\n    return False",
+    ),
+    (
+        "    if o[0]==192 and o[1]==168: return True\n    return False",
+        "    if o[0]==192 and o[1]==168: return True\n    if o[0]==127: return True\n    if o[0]==169 and o[1]==254: return True\n    return False",
+    ),
+)
+
+
+def active_sh_needs_patch(text: str) -> bool:
+    if "is_private" not in text:
+        return False
+    if "octets[0] == 127" in text or "o[0] == 127" in text or "o[0]==127" in text:
+        return False
+    return any(old in text for old, _new in _ACTIVE_RFC1918_TAILS)
+
+
+def patch_active_sh(text: str) -> str:
+    out = text
+    for old, new in _ACTIVE_RFC1918_TAILS:
+        out = out.replace(old, new)
+    return out
