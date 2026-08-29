@@ -17,18 +17,55 @@ _EXTRA_BIN_DIRS = (
     Path("/root/go/bin"),
     Path("/usr/local/go/bin"),
     Path("/usr/local/bin"),
+    Path.home() / "theHarvester" / ".venv" / "bin",
 )
+
+# Kali also ships a Python httpx CLI at /usr/bin/httpx. ReDiscover wants
+# ProjectDiscovery's ELF binary (typically /usr/local/bin/httpx).
+_PREFER_ELF = frozenset({"httpx"})
+
+
+def is_elf(path: str | Path) -> bool:
+    try:
+        with open(path, "rb") as handle:
+            return handle.read(4) == b"\x7fELF"
+    except OSError:
+        return False
+
+
+def _candidates(name: str) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    folders: list[Path] = []
+    for part in os.environ.get("PATH", "").split(os.pathsep):
+        if part:
+            folders.append(Path(part))
+    folders.extend(_EXTRA_BIN_DIRS)
+    path_hit = shutil.which(name)
+    if path_hit:
+        folders.insert(0, Path(path_hit).parent)
+    for folder in folders:
+        candidate = folder / name
+        if not candidate.is_file() or not os.access(candidate, os.X_OK):
+            continue
+        try:
+            key = str(candidate.resolve())
+        except OSError:
+            key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
 
 
 def which(name: str) -> str | None:
-    found = shutil.which(name)
-    if found:
-        return found
-    for folder in _EXTRA_BIN_DIRS:
-        candidate = folder / name
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
-    return None
+    found = _candidates(name)
+    if name in _PREFER_ELF:
+        for path in found:
+            if is_elf(path):
+                return path
+    return found[0] if found else None
 
 
 def run(

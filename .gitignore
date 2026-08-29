@@ -30,6 +30,9 @@ secrets/
 *.log
 *.tmp
 
+# Local engagement cases (operator output, not the product)
+cases/
+
 # IDE / editor
 .idea/
 .vscode/

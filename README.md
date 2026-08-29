@@ -55,7 +55,9 @@ Grok: `/rediscover` — diagnose Discover, apply `--fix`, then option 18 (`sudo 
 
 `--offline` skips **live** lookups only. The case, honesty layer, and report still run.
 
-Passive uses whatever is already installed: `whois`, `dig` (or `host`), `subfinder`, `amass`, `sublist3r`, `dnstwist`, `theHarvester`. Active adds `httpx` (or `curl`), `whatweb`, and optional `nmap`. Missing tools are skipped and named.
+Passive uses whatever is already installed: `whois` (RDAP when whois is retired or malformed), `dig` (or `host`), `subfinder`, `amass`, `sublist3r`, `dnstwist`, `theHarvester`. Active adds ProjectDiscovery `httpx` (or `curl`), `whatweb`, and optional `nmap`. Missing tools are skipped and named.
+
+Authorized first-test labs: `example.com` (DNS/whois smoke), `ginandjuice.shop` (PortSwigger web lab), `scanme.nmap.org` (nmap grant). Do not scan `sans.org` / `sans.edu`.
 
 ## What you get
 

@@ -139,7 +139,7 @@ def recon(
         company=company.strip(),
         mode="active" if active else "passive",
     )
-    run_passive(engagement, runner, quick=quick)
+    run_passive(engagement, runner, quick=quick, fetch=fetch)
     if active:
         run_active(engagement, runner, nmap=nmap, max_hosts=max_hosts)
     if enrich:

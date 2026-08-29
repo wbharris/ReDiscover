@@ -93,41 +93,33 @@ class Engagement:
         return asdict(self)
 
 
+def _rows(cls, rows: list | None):
+    fields = set(cls.__dataclass_fields__)
+    out = []
+    for row in rows or []:
+        if isinstance(row, dict):
+            out.append(cls(**{k: v for k, v in row.items() if k in fields}))
+    return out
+
+
 def engagement_from_dict(data: dict[str, Any]) -> Engagement:
-    def _hosts(rows: list) -> list[Host]:
-        out: list[Host] = []
-        fields = set(Host.__dataclass_fields__)
-        for row in rows or []:
-            if isinstance(row, dict):
-                out.append(Host(**{k: v for k, v in row.items() if k in fields}))
-        return out
-
-    def _contacts(rows: list) -> list[Contact]:
-        fields = set(Contact.__dataclass_fields__)
-        return [
-            Contact(**{k: v for k, v in row.items() if k in fields})
-            for row in rows or []
-            if isinstance(row, dict)
-        ]
-
-    def _tools(rows: list) -> list[ToolRun]:
-        fields = set(ToolRun.__dataclass_fields__)
-        return [
-            ToolRun(**{k: v for k, v in row.items() if k in fields})
-            for row in rows or []
-            if isinstance(row, dict)
-        ]
-
     return Engagement(
         kind=str(data.get("kind") or "domain"),
         domain=str(data.get("domain") or ""),
         company=str(data.get("company") or ""),
+        person_first=str(data.get("person_first") or ""),
+        person_last=str(data.get("person_last") or ""),
         mode=str(data.get("mode") or "passive"),
         whois_raw=str(data.get("whois_raw") or ""),
         registrar=str(data.get("registrar") or ""),
         org=str(data.get("org") or ""),
         name_servers=list(data.get("name_servers") or []),
-        hosts=_hosts(data.get("hosts") or []),
-        contacts=_contacts(data.get("contacts") or []),
-        tools=_tools(data.get("tools") or []),
+        dns=_rows(DnsRecord, data.get("dns")),
+        hosts=_rows(Host, data.get("hosts")),
+        contacts=_rows(Contact, data.get("contacts")),
+        links=_rows(SearchLink, data.get("links")),
+        squatting=[str(item) for item in (data.get("squatting") or [])],
+        tools=_rows(ToolRun, data.get("tools")),
+        assumptions=_rows(Assumption, data.get("assumptions")),
+        improve=_rows(InfoNeed, data.get("improve")),
     )

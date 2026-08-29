@@ -71,11 +71,11 @@ Use tools **already on the box**. Missing tools are skipped and named, not treat
 
 | Check | Tools (when present) |
 |-------|----------------------|
-| Whois | `whois` |
+| Whois | `whois`; **RDAP** (`rdap.org`) when whois is retired, malformed, or missing |
 | DNS | `dig` (fallback `host`) — A, AAAA, MX, NS, TXT, SOA, CNAME |
 | Subdomains | `subfinder`, `amass` (`enum -passive`), `sublist3r` |
 | Squatting | `dnstwist -r -f json` |
-| People / mail | whois emails; `theHarvester -b duckduckgo` when present |
+| People / mail | whois emails; `theHarvester -b duckduckgo` when present (ignore the tool banner address) |
 
 `--offline` skips live lookups and still writes the case skeleton.
 
@@ -88,7 +88,7 @@ Opt-in (`--active`). Needs authorization.
 | Step | Tools |
 |------|-------|
 | Resolve | `dig` / `host` A records |
-| HTTP | `httpx` JSON (fallback `curl`) |
+| HTTP | ProjectDiscovery `httpx` JSON (ELF; not Python `httpx`). Fallback `curl` |
 | Fingerprint | `whatweb` when URLs are alive |
 | Ports | `nmap -Pn -sV --top-ports 20` only with `--nmap` |
 

@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Callable
 
-from rediscover.models import Contact, DnsRecord, Engagement, Host, ToolRun
+from rediscover.models import Assumption, Contact, DnsRecord, Engagement, Host, ToolRun
 from rediscover.netutil import is_private_ipv4
 from rediscover.tools import planned, run, which
 
@@ -173,6 +173,145 @@ def harvest_bin() -> str:
     return "theharvester"
 
 
+def harvest_emails(output: str) -> list[str]:
+    """Emails from theHarvester body, not the ASCII author banner."""
+    if re.search(r"\[\*]\s+No emails found", output or "", re.I):
+        return []
+    start = (output or "").find("[*] Target:")
+    text = output[start:] if start >= 0 else (output or "")
+    emails: list[str] = []
+    for match in _unique(_EMAIL_RE.findall(text)):
+        if _PRIVACY_EMAIL.search(match):
+            continue
+        if match.lower() in {"cmartorella@edge-security.com"}:
+            continue
+        emails.append(match)
+    return emails
+
+
+def whois_needs_rdap(raw: str) -> bool:
+    text = (raw or "").lower()
+    return any(
+        needle in text
+        for needle in (
+            "whois service has been retired",
+            "rdap transition",
+            "malformed request",
+            "all registration data queries are now served via rdap",
+            "registration data access protocol (rdap)",
+        )
+    )
+
+
+def rdap_lookup_names(domain: str) -> list[str]:
+    labels = domain.split(".")
+    names = [domain]
+    if len(labels) >= 3:
+        parent = ".".join(labels[-2:])
+        if parent not in names:
+            names.append(parent)
+    return names
+
+
+def parse_rdap(data: dict) -> tuple[str, str, list[str]]:
+    def vcard_fn(entity: dict) -> str:
+        arr = entity.get("vcardArray")
+        if not isinstance(arr, list) or len(arr) < 2:
+            return ""
+        for item in arr[1]:
+            if isinstance(item, list) and item and item[0] == "fn" and len(item) >= 4:
+                return str(item[3]).strip()
+        return ""
+
+    registrar = ""
+    org = ""
+    nses: list[str] = []
+    for ns in data.get("nameservers") or []:
+        if not isinstance(ns, dict):
+            continue
+        name = str(ns.get("ldhName") or ns.get("unicodeName") or "").strip().rstrip(".")
+        if name:
+            nses.append(name.lower())
+    for ent in data.get("entities") or []:
+        if not isinstance(ent, dict):
+            continue
+        roles = [str(role).lower() for role in (ent.get("roles") or [])]
+        fn = vcard_fn(ent)
+        if "registrar" in roles and fn and not registrar:
+            registrar = fn
+        if "registrant" in roles and fn and not org:
+            org = fn
+    return registrar, org, _unique(nses)
+
+
+def run_rdap(engagement: Engagement, fetcher=None) -> None:
+    from rediscover.httpfetch import http_get
+
+    get = fetcher or http_get
+    last_err = ""
+    for name in rdap_lookup_names(engagement.domain):
+        url = f"https://rdap.org/domain/{name}"
+        try:
+            status, body, err = get(url, timeout=25)
+        except TypeError:
+            status, body, err = get(url)
+        last_err = err or (f"HTTP {status}" if status != 200 else "")
+        if status != 200 or not (body or "").strip():
+            continue
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            last_err = "invalid JSON"
+            continue
+        if not isinstance(data, dict):
+            continue
+        registrar, org, nses = parse_rdap(data)
+        if not registrar and not nses:
+            continue
+        if registrar and not engagement.registrar:
+            engagement.registrar = registrar
+        if org and not engagement.org:
+            engagement.org = org
+            if org and not engagement.company:
+                engagement.company = org
+        if nses and not engagement.name_servers:
+            engagement.name_servers = nses
+        reason = f"{name}; registrar {registrar or 'unknown'}"
+        if name != engagement.domain:
+            reason += " (parent zone)"
+            engagement.assumptions.append(
+                Assumption(
+                    field="rdap_parent",
+                    assumed=f"registry identity from {name}",
+                    because=(
+                        "whois/RDAP for the hostname failed; parent RDAP is "
+                        "registry data, not a scan of that zone's other hosts"
+                    ),
+                )
+            )
+        engagement.tools.append(
+            ToolRun(name="rdap", status="ran", command=["GET", url], reason=reason)
+        )
+        return
+    engagement.tools.append(
+        ToolRun(
+            name="rdap",
+            status="failed",
+            command=["GET", f"https://rdap.org/domain/{engagement.domain}"],
+            reason=last_err or "no RDAP match",
+        )
+    )
+
+
+def _should_rdap(engagement: Engagement) -> bool:
+    if engagement.registrar:
+        return False
+    whois = next((tool for tool in engagement.tools if tool.name == "whois"), None)
+    if whois is None or whois.status in {"skipped", "failed"}:
+        return True
+    return whois_needs_rdap(whois.output)
+
+
 def _step(name: str, argv: list[str], timeout: int, runner: Runner | None) -> ToolRun:
     if runner is not None:
         return runner(name, argv)
@@ -213,6 +352,7 @@ def run_passive(
     runner: Runner | None = None,
     *,
     quick: bool = False,
+    fetch=None,
 ) -> None:
     domain = engagement.domain
     parse_dns = _parse_dig if which("dig") else _parse_host
@@ -238,14 +378,15 @@ def run_passive(
         elif name == "dnstwist":
             engagement.squatting = parse_dnstwist(tool.output, domain)
         elif name == "theHarvester":
-            for email in _unique(_EMAIL_RE.findall(tool.output)):
-                if _PRIVACY_EMAIL.search(email):
-                    continue
+            for email in harvest_emails(tool.output):
                 if any(c.value.lower() == email.lower() for c in engagement.contacts):
                     continue
                 engagement.contacts.append(
                     Contact(value=email, kind="email", source="theHarvester")
                 )
+
+    if _should_rdap(engagement):
+        run_rdap(engagement, fetcher=fetch)
 
     merged = collect_hosts(domain, engagement.tools)
     existing = {h.name: h for h in engagement.hosts}

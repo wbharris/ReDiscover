@@ -1,6 +1,6 @@
 [project]
 name = "rediscover-recon"
-version = "0.4.0"
+version = "0.4.1"
 description = "ReDiscover™ — Kali recon, and a doctor for Discover on Kali Purple."
 readme = "README.md"
 requires-python = ">=3.11"
