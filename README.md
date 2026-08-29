@@ -1,8 +1,8 @@
 # ReDiscover™
 
-Kali **recon** as one engagement case: whois, DNS, subdomains, HTTP, person search URLs, what actually ran.
+Kali **recon** as one engagement case, and a **Grok agent / `doctor`** that runs [Lee Baird’s Discover](https://github.com/leebaird/discover) on Kali Purple and repairs Update failures.
 
-Inspired by [Lee Baird’s Discover](https://github.com/leebaird/discover). Not a fork. No Metasploit payloads or listeners.
+Not a Discover fork. No Metasploit payloads or listeners.
 
 Repo: https://github.com/wbharris/ReDiscover
 
@@ -31,7 +31,11 @@ rediscover recon example.com --offline
 rediscover recon example.com --dry-run --active --nmap
 rediscover person Jane Doe
 rediscover person Jane Doe --open
+rediscover doctor
+sudo rediscover doctor --fix
 ```
+
+Grok: `/rediscover` — diagnose Discover, apply `--fix`, then option 18 (`sudo /opt/discover/misc/update.sh`). Do not type Discover’s menu over a pipe.
 
 | Flag | Meaning |
 |------|---------|

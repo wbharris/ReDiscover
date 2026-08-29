@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from pathlib import Path
 
 from rediscover import __version__
+from rediscover.doctor import apply_fixes, diagnose, to_markdown as doctor_markdown
 from rediscover.pipeline import person, recon
 from rediscover.report import to_json, to_markdown
 
@@ -86,6 +89,23 @@ def main(argv: list[str] | None = None) -> int:
     per.add_argument("--json", action="store_true", help="Write JSON instead of markdown")
     per.add_argument("-o", "--output", help="Write report here (default: stdout)")
 
+    doc = sub.add_parser(
+        "doctor",
+        help="Diagnose Discover on Kali Purple; --fix applies repairs",
+    )
+    doc.add_argument(
+        "--fix",
+        action="store_true",
+        help="Apply repairs (root for apt, sudoers, venvs)",
+    )
+    doc.add_argument("--json", action="store_true", help="Write JSON instead of markdown")
+    doc.add_argument("-o", "--output", help="Write report here (default: stdout)")
+    doc.add_argument(
+        "--discover-root",
+        default="/opt/discover",
+        help="Discover clone (default: /opt/discover)",
+    )
+
     args = parser.parse_args(argv)
     try:
         if args.cmd == "recon":
@@ -117,6 +137,20 @@ def main(argv: list[str] | None = None) -> int:
                 open_links=args.open_links,
             )
             return _emit(engagement, args.json, args.output)
+        if args.cmd == "doctor":
+            root = Path(args.discover_root)
+            findings = diagnose(root)
+            if args.fix:
+                findings = apply_fixes(findings, root)
+            if args.json:
+                text = json.dumps([f.to_dict() for f in findings], indent=2) + "\n"
+            else:
+                text = doctor_markdown(findings)
+            if args.output:
+                Path(args.output).write_text(text, encoding="utf-8")
+            else:
+                sys.stdout.write(text)
+            return 0 if all(f.ok for f in findings) else 1
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

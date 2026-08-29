@@ -1,8 +1,8 @@
 # ReDiscover™ product contract
 
-End goal: an operator gives ReDiscover a **domain** or a **person** and gets one **engagement case** they can act on — assets, DNS, contacts, search URLs, what ran, and what is still missing.
+End goal: a Grok agent (and CLI) **runs Discover on Kali Purple and corrects the failures we hit**, and still produces one **engagement case** for a domain or person.
 
-ReDiscover does **not** replace [Lee Baird’s Discover](https://github.com/leebaird/discover). It sits in the same job: Kali recon. Discover is a long bash menu that shells out to other tools and writes an HTML tree under `$HOME/data/<domain>/`. ReDiscover is a **CLI case file** in the same family as VulNavigator™: normalize, run, report, stay honest.
+ReDiscover does **not** replace [Lee Baird’s Discover](https://github.com/leebaird/discover). It shepherds that clone (`/opt/discover`) and adds a CLI case file in the same family as VulNavigator™. Discover stays the bash menu + HTML tree. ReDiscover is `doctor` + `recon` + `person`.
 
 Repo: https://github.com/wbharris/ReDiscover
 
@@ -110,14 +110,25 @@ Person: summary, search URLs, sources, honesty.
 
 Every tool is `ran`, `skipped`, or `failed` with a reason. Guessed fields are listed. Counts in the summary must match the lists.
 
-## What v0.2 is
+## Grok agent
 
+Skill: `.grok/skills/rediscover/SKILL.md` (`/rediscover`).
+
+1. `rediscover doctor --json`
+2. `sudo rediscover doctor --fix` if anything FAIL
+3. `sudo /opt/discover/misc/update.sh` only when the operator asked for Discover Update (menu 18)
+
+`doctor --fix` repairs: git `safe.directory` / ownership, `/usr/local/bin/discover`, Kali `arp-scan`, Kali `update.sh` (arp-scan + apt Metasploit), sudo `secure_path` (`/etc/sudoers.d/rediscover`), DNSRecon/Sublist3r venvs. Upstream: https://github.com/leebaird/discover/issues/227
+
+## What v0.3 is
+
+- Grok agent + `rediscover doctor [--fix]`
 - `rediscover recon DOMAIN` — live passive
 - `rediscover recon DOMAIN --active` — plus HTTP
 - `rediscover recon DOMAIN --active --nmap` — plus nmap
 - `rediscover person FIRST LAST` — search URLs
 
-## What v0.2 is not
+## What v0.3 is not
 
 - A Discover fork or HTML report clone
 - Payloads, listeners, or exploit wrappers
