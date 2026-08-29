@@ -2,7 +2,8 @@
 
 **ReDiscover** is a trademark of **wbharris**.
 
-The mark is used in connection with downloadable software and related
+The mark is used in connection with downloadable software for
+reconnaissance (domain/DNS/whois/subdomain engagement cases) and related
 documentation published from this repository.
 
 This is a **common-law / ™ claim**, not a registered **®** mark.

@@ -1,0 +1,31 @@
+[project]
+name = "rediscover-recon"
+version = "0.1.0"
+description = "ReDiscover™ — Kali recon into one engagement case (whois, DNS, subdomains)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "wbharris" }]
+keywords = ["ReDiscover", "recon", "OSINT", "whois", "DNS", "Kali"]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/wbharris/ReDiscover"
+Repository = "https://github.com/wbharris/ReDiscover"
+Trademark = "https://github.com/wbharris/ReDiscover/blob/main/TRADEMARK.md"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+rediscover = "rediscover.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
