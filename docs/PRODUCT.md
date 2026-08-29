@@ -12,7 +12,7 @@ Inspired by Discover (MIT). ReDiscover is original GPL-3.0-or-later work. See [`
 
 ## Why this exists
 
-Discover on this workstation lives at `/root/discover` (clone of `leebaird/discover`, last local commit 2026-07-11). Upstream is still active. The pain is not “the GitHub repo is dead.” It is:
+Discover on this workstation lives at `/opt/discover` (clone of `leebaird/discover`). Upstream is still active. The pain is not “the GitHub repo is dead.” It is:
 
 - Menu-driven bash, hard to test, hard to automate
 - HTML report tree instead of a single case you can pipe elsewhere

@@ -10,4 +10,4 @@ Discover authors (for attribution of the prior art, not of this code):
 - Jay “L1ghtn1ng” Townsend (@jay_townsend1)
 - Jason Ashton (@ninewires)
 
-On this workstation the local Discover clone is `/root/discover`.
+On this workstation the local Discover clone is `/opt/discover`.
