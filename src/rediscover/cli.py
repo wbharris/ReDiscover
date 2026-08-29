@@ -1,4 +1,4 @@
-"""CLI: rediscover recon DOMAIN."""
+"""CLI: rediscover recon DOMAIN | rediscover person FIRST LAST."""
 
 from __future__ import annotations
 
@@ -6,8 +6,18 @@ import argparse
 import sys
 
 from rediscover import __version__
-from rediscover.pipeline import recon
+from rediscover.pipeline import person, recon
 from rediscover.report import to_json, to_markdown
+
+
+def _emit(engagement, as_json: bool, output: str | None) -> int:
+    text = to_json(engagement) if as_json else to_markdown(engagement)
+    if output:
+        with open(output, "w", encoding="utf-8") as handle:
+            handle.write(text)
+    else:
+        sys.stdout.write(text)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    rec = sub.add_parser("recon", help="Passive recon for a domain")
+    rec = sub.add_parser("recon", help="Domain recon (passive, optional active)")
     rec.add_argument("domain", help="Target domain, e.g. example.com")
     rec.add_argument("--company", default="", help="Organization name on the report")
     rec.add_argument(
@@ -39,42 +49,79 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print the tool plan without running it",
     )
-    rec.add_argument("--json", action="store_true", help="Write JSON instead of markdown")
-    rec.add_argument("-o", "--output", help="Write report here (default: stdout)")
+    rec.add_argument(
+        "--quick",
+        action="store_true",
+        help="Skip amass, sublist3r, and dnstwist",
+    )
     rec.add_argument(
         "--active",
         action="store_true",
-        help="Active recon (not in v0.1)",
+        help="Resolve public hosts and HTTP-probe them",
     )
+    rec.add_argument(
+        "--nmap",
+        action="store_true",
+        help="Also nmap -sV --top-ports 20 on public IPs (requires --active)",
+    )
+    rec.add_argument(
+        "--max-hosts",
+        type=int,
+        default=25,
+        help="Cap active HTTP/nmap hosts (default: 25)",
+    )
+    rec.add_argument("--json", action="store_true", help="Write JSON instead of markdown")
+    rec.add_argument("-o", "--output", help="Write report here (default: stdout)")
+
+    per = sub.add_parser("person", help="Person recon (search URLs, optional --open)")
+    per.add_argument("first", help="First name")
+    per.add_argument("last", help="Last name")
+    per.add_argument(
+        "--open",
+        action="store_true",
+        dest="open_links",
+        help="Open search URLs in Firefox (or xdg-open)",
+    )
+    per.add_argument("--dry-run", action="store_true", help="Show the open plan only")
+    per.add_argument("--json", action="store_true", help="Write JSON instead of markdown")
+    per.add_argument("-o", "--output", help="Write report here (default: stdout)")
 
     args = parser.parse_args(argv)
-    if args.cmd != "recon":
-        parser.error("unknown command")
-    if args.active:
-        print("ReDiscover v0.1 has no --active path yet. Use passive recon.", file=sys.stderr)
-        return 2
-    if args.offline and args.dry_run:
-        print("Use either --offline or --dry-run, not both.", file=sys.stderr)
-        return 2
-
     try:
-        engagement = recon(
-            args.domain,
-            company=args.company,
-            offline=args.offline,
-            dry_run=args.dry_run,
-        )
+        if args.cmd == "recon":
+            if args.offline and args.dry_run:
+                print("Use either --offline or --dry-run, not both.", file=sys.stderr)
+                return 2
+            if args.max_hosts < 1:
+                print("--max-hosts must be >= 1", file=sys.stderr)
+                return 2
+            engagement = recon(
+                args.domain,
+                company=args.company,
+                offline=args.offline,
+                dry_run=args.dry_run,
+                quick=args.quick,
+                active=args.active,
+                nmap=args.nmap,
+                max_hosts=args.max_hosts,
+            )
+            return _emit(engagement, args.json, args.output)
+        if args.cmd == "person":
+            if args.dry_run and args.open_links:
+                print("Use either --dry-run or --open, not both.", file=sys.stderr)
+                return 2
+            engagement = person(
+                args.first,
+                args.last,
+                dry_run=args.dry_run,
+                open_links=args.open_links,
+            )
+            return _emit(engagement, args.json, args.output)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-
-    text = to_json(engagement) if args.json else to_markdown(engagement)
-    if args.output:
-        with open(args.output, "w", encoding="utf-8") as handle:
-            handle.write(text)
-    else:
-        sys.stdout.write(text)
-    return 0
+    parser.error("unknown command")
+    return 2
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # ReDiscover™
 
-Kali **recon** as one engagement case: whois, DNS, subdomains, what actually ran.
+Kali **recon** as one engagement case: whois, DNS, subdomains, HTTP, person search URLs, what actually ran.
 
 Inspired by [Lee Baird’s Discover](https://github.com/leebaird/discover). Not a fork. No Metasploit payloads or listeners.
 
@@ -23,9 +23,14 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ```bash
 rediscover recon example.com
 rediscover recon example.com --company 'Example Inc' -o report.md
+rediscover recon example.com --quick
+rediscover recon example.com --quick --active
+rediscover recon example.com --active --nmap --max-hosts 10
 rediscover recon example.com --json
 rediscover recon example.com --offline
-rediscover recon example.com --dry-run
+rediscover recon example.com --dry-run --active --nmap
+rediscover person Jane Doe
+rediscover person Jane Doe --open
 ```
 
 | Flag | Meaning |
@@ -33,24 +38,30 @@ rediscover recon example.com --dry-run
 | `--company` | Organization name on the report |
 | `--offline` | Do not call whois/DNS/subdomain tools; still write the case |
 | `--dry-run` | Print the tool plan; do not execute |
+| `--quick` | Skip amass, sublist3r, and dnstwist |
+| `--active` | Resolve public hosts and HTTP-probe them |
+| `--nmap` | Also `nmap -sV --top-ports 20` on public IPs (requires `--active`) |
+| `--max-hosts` | Cap active HTTP/nmap hosts (default 25) |
 | `--json` | Case file instead of markdown |
 | `-o` | Write to a file (default: stdout) |
+| `--open` | (`person` only) open search URLs in Firefox |
 
 `--offline` skips **live** lookups only. The case, honesty layer, and report still run.
 
-Passive uses whatever is already installed: `whois`, `dig` (or `host`), and when present `subfinder`, `amass`, `sublist3r`. Missing tools are skipped and named.
+Passive uses whatever is already installed: `whois`, `dig` (or `host`), `subfinder`, `amass`, `sublist3r`, `dnstwist`, `theHarvester`. Active adds `httpx` (or `curl`), `whatweb`, and optional `nmap`. Missing tools are skipped and named.
 
 ## What you get
 
 A markdown report (or `--json` case):
 
 1. Engagement summary
-2. Domain identity
+2. Domain identity (or person search URLs)
 3. DNS
-4. Hosts / subdomains
+4. Hosts / subdomains (HTTP status when `--active`)
 5. People and emails
-6. Sources (commands)
-7. Confidence and what would improve this
+6. Lookalike domains
+7. Sources (commands)
+8. Confidence and what would improve this
 
 ## Trademark
 

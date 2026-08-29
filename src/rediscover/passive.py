@@ -1,11 +1,13 @@
-"""Passive recon: whois, DNS, subdomain tools."""
+"""Passive recon: whois, DNS, subdomain tools, squatting, mail."""
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 
 from rediscover.models import Contact, DnsRecord, Engagement, Host, ToolRun
+from rediscover.netutil import is_private_ipv4
 from rediscover.tools import planned, run, which
 
 DOMAIN_RE = re.compile(
@@ -142,60 +144,125 @@ def collect_hosts(domain: str, runs: list[ToolRun]) -> list[Host]:
     return sorted(by_name.values(), key=lambda h: h.name)
 
 
-def plan_passive(domain: str) -> list[ToolRun]:
-    steps: list[ToolRun] = [planned("whois", ["whois", domain])]
+def parse_dnstwist(output: str, domain: str) -> list[str]:
+    names: list[str] = []
+    text = output.strip()
+    if not text:
+        return names
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        for line in text.splitlines():
+            token = line.split()[0].strip().rstrip(".") if line.strip() else ""
+            if token and token.lower() != domain:
+                names.append(token)
+        return _unique(names)
+    rows = data if isinstance(data, list) else [data]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("domain") or row.get("dns_domain") or "").strip().rstrip(".")
+        if name and name.lower() != domain:
+            names.append(name)
+    return _unique(names)
+
+
+def harvest_bin() -> str:
+    if which("theHarvester"):
+        return "theHarvester"
+    return "theharvester"
+
+
+def _step(name: str, argv: list[str], timeout: int, runner: Runner | None) -> ToolRun:
+    if runner is not None:
+        return runner(name, argv)
+    return run(name, argv, timeout=timeout)
+
+
+def passive_steps(domain: str, *, quick: bool = False) -> list[tuple[str, list[str], int]]:
+    steps: list[tuple[str, list[str], int]] = [("whois", ["whois", domain], 45)]
     for rtype in ("A", "AAAA", "MX", "NS", "TXT", "SOA", "CNAME"):
-        steps.append(planned(f"dns-{rtype.lower()}", _dns_argv(domain, rtype)))
-    steps.append(planned("subfinder", ["subfinder", "-d", domain, "-silent"]))
-    steps.append(planned("amass", ["amass", "enum", "-passive", "-d", domain]))
-    steps.append(planned("sublist3r", ["sublist3r", "-d", domain, "-n"]))
+        steps.append((f"dns-{rtype.lower()}", _dns_argv(domain, rtype), 20))
+    steps.append(("subfinder", ["subfinder", "-d", domain, "-silent"], 120))
+    if not quick:
+        steps.append(("amass", ["amass", "enum", "-passive", "-d", domain], 180))
+        steps.append(("sublist3r", ["sublist3r", "-d", domain, "-n"], 120))
+        steps.append(
+            (
+                "dnstwist",
+                ["dnstwist", "-r", "-f", "json", domain],
+                180,
+            )
+        )
+    steps.append(
+        (
+            "theHarvester",
+            [harvest_bin(), "-d", domain, "-b", "duckduckgo"],
+            120,
+        )
+    )
     return steps
 
 
-def run_passive(engagement: Engagement, runner: Runner | None = None) -> None:
-    execute: Runner = runner or (lambda name, argv: run(name, argv))
+def plan_passive(domain: str, *, quick: bool = False) -> list[ToolRun]:
+    return [planned(name, argv) for name, argv, _timeout in passive_steps(domain, quick=quick)]
+
+
+def run_passive(
+    engagement: Engagement,
+    runner: Runner | None = None,
+    *,
+    quick: bool = False,
+) -> None:
     domain = engagement.domain
-
-    whois = execute("whois", ["whois", domain])
-    engagement.tools.append(whois)
-    if whois.status == "ran" and whois.output:
-        engagement.whois_raw = whois.output
-        registrar, org, nses, emails = parse_whois(whois.output)
-        engagement.registrar = registrar
-        if org and not engagement.company:
-            engagement.company = org
-        engagement.org = org
-        engagement.name_servers = nses
-        for email in emails:
-            engagement.contacts.append(Contact(value=email, kind="email", source="whois"))
-
     parse_dns = _parse_dig if which("dig") else _parse_host
-    for rtype in ("A", "AAAA", "MX", "NS", "TXT", "SOA", "CNAME"):
-        tool = execute(f"dns-{rtype.lower()}", _dns_argv(domain, rtype))
-        engagement.tools.append(tool)
-        if tool.status == "ran" and tool.output:
-            engagement.dns.extend(parse_dns(rtype, tool.output))
-        if rtype == "A" and tool.status == "ran":
-            ips = [rec.value for rec in engagement.dns if rec.type == "A"]
-            if ips:
-                found = next((h for h in engagement.hosts if h.name == domain), None)
-                if found:
-                    found.ips = ips
-                else:
-                    engagement.hosts.append(Host(name=domain, ips=ips, source="dns"))
 
-    for name, argv, timeout in (
-        ("subfinder", ["subfinder", "-d", domain, "-silent"], 120),
-        ("amass", ["amass", "enum", "-passive", "-d", domain], 180),
-        ("sublist3r", ["sublist3r", "-d", domain, "-n"], 120),
-    ):
-        if runner is None:
-            engagement.tools.append(run(name, argv, timeout=timeout))
-        else:
-            engagement.tools.append(execute(name, argv))
+    for name, argv, timeout in passive_steps(domain, quick=quick):
+        tool = _step(name, argv, timeout, runner)
+        engagement.tools.append(tool)
+        if tool.status != "ran" or not tool.output:
+            continue
+        if name == "whois":
+            engagement.whois_raw = tool.output
+            registrar, org, nses, emails = parse_whois(tool.output)
+            engagement.registrar = registrar
+            if org and not engagement.company:
+                engagement.company = org
+            engagement.org = org
+            engagement.name_servers = nses
+            for email in emails:
+                engagement.contacts.append(Contact(value=email, kind="email", source="whois"))
+        elif name.startswith("dns-"):
+            rtype = name.split("-", 1)[1].upper()
+            engagement.dns.extend(parse_dns(rtype, tool.output))
+        elif name == "dnstwist":
+            engagement.squatting = parse_dnstwist(tool.output, domain)
+        elif name == "theHarvester":
+            for email in _unique(_EMAIL_RE.findall(tool.output)):
+                if _PRIVACY_EMAIL.search(email):
+                    continue
+                if any(c.value.lower() == email.lower() for c in engagement.contacts):
+                    continue
+                engagement.contacts.append(
+                    Contact(value=email, kind="email", source="theHarvester")
+                )
 
     merged = collect_hosts(domain, engagement.tools)
-    existing_ips = {h.name: h.ips for h in engagement.hosts}
+    existing = {h.name: h for h in engagement.hosts}
+    apex_ips = [
+        rec.value
+        for rec in engagement.dns
+        if rec.type == "A" and not is_private_ipv4(rec.value)
+    ] + [
+        rec.value
+        for rec in engagement.dns
+        if rec.type == "A" and is_private_ipv4(rec.value)
+    ]
     for host in merged:
-        host.ips = existing_ips.get(host.name, host.ips)
+        prior = existing.get(host.name)
+        if prior and prior.ips:
+            host.ips = prior.ips
+        if host.name == domain and apex_ips:
+            host.ips = _unique(apex_ips)
+        host.private = bool(host.ips) and all(is_private_ipv4(ip) for ip in host.ips)
     engagement.hosts = merged

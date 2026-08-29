@@ -26,6 +26,13 @@ class Host:
     name: str
     ips: list[str] = field(default_factory=list)
     source: str = ""
+    private: bool = False
+    url: str = ""
+    status: int | None = None
+    title: str = ""
+    server: str = ""
+    technologies: list[str] = field(default_factory=list)
+    nmap: str = ""
 
 
 @dataclass
@@ -33,6 +40,12 @@ class Contact:
     value: str
     kind: str = "email"  # email | name | org
     source: str = ""
+
+
+@dataclass
+class SearchLink:
+    title: str
+    url: str
 
 
 @dataclass
@@ -50,9 +63,12 @@ class InfoNeed:
 
 @dataclass
 class Engagement:
-    domain: str
+    kind: str = "domain"  # domain | person
+    domain: str = ""
     company: str = ""
-    mode: str = "passive"  # offline | dry-run | passive
+    person_first: str = ""
+    person_last: str = ""
+    mode: str = "passive"  # offline | dry-run | passive | active | person
     whois_raw: str = ""
     registrar: str = ""
     org: str = ""
@@ -60,9 +76,17 @@ class Engagement:
     dns: list[DnsRecord] = field(default_factory=list)
     hosts: list[Host] = field(default_factory=list)
     contacts: list[Contact] = field(default_factory=list)
+    links: list[SearchLink] = field(default_factory=list)
+    squatting: list[str] = field(default_factory=list)
     tools: list[ToolRun] = field(default_factory=list)
     assumptions: list[Assumption] = field(default_factory=list)
     improve: list[InfoNeed] = field(default_factory=list)
+
+    @property
+    def title(self) -> str:
+        if self.kind == "person":
+            return f"{self.person_first} {self.person_last}".strip() or "person"
+        return self.domain or "engagement"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

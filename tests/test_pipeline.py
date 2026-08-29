@@ -78,7 +78,7 @@ def test_offline_case():
     md = to_markdown(engagement)
     assert "example.com" in md
     assert "--offline" in md
-    assert "7. Confidence" in md
+    assert "8. Confidence" in md
 
 
 def test_dry_run_plans_tools():
@@ -87,4 +87,13 @@ def test_dry_run_plans_tools():
     assert "whois" in names
     assert "dns-a" in names
     assert "subfinder" in names
+    assert "dnstwist" in names
     assert all(t.status in {"planned", "skipped"} for t in engagement.tools)
+
+
+def test_quick_skips_heavy_tools():
+    names = [t.name for t in recon("example.com", dry_run=True, quick=True).tools]
+    assert "subfinder" in names
+    assert "amass" not in names
+    assert "dnstwist" not in names
+    assert "theHarvester" in names

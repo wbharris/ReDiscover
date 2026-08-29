@@ -19,8 +19,17 @@ def test_cli_rejects_bad_domain(capsys):
     assert "not a domain" in err
 
 
-def test_cli_rejects_active():
-    assert main(["recon", "example.com", "--active"]) == 2
+def test_cli_nmap_requires_active(capsys):
+    assert main(["recon", "example.com", "--offline", "--nmap"]) == 2
+    err = capsys.readouterr().err
+    assert "--nmap requires --active" in err
+
+
+def test_cli_dry_run_active(capsys):
+    assert main(["recon", "example.com", "--dry-run", "--active"]) == 0
+    out = capsys.readouterr().out
+    assert "`dry-run`" in out
+    assert "httpx" in out or "curl" in out
 
 
 def test_cli_json_and_output(tmp_path: Path):
