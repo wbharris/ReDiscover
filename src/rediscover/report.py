@@ -38,6 +38,8 @@ def to_markdown(engagement: Engagement) -> str:
             bits.append(f"({', '.join(host.ips)})")
         if host.private:
             bits.append("private")
+        if not host.confirmed:
+            bits.append("unconfirmed")
         if host.status is not None:
             bits.append(f"HTTP {host.status}")
         if host.title:

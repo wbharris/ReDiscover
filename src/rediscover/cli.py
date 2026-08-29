@@ -9,6 +9,8 @@ from pathlib import Path
 
 from rediscover import __version__
 from rediscover.doctor import apply_fixes, diagnose, to_markdown as doctor_markdown
+from rediscover.enrich import run_enrich
+from rediscover.models import engagement_from_dict
 from rediscover.pipeline import person, recon
 from rediscover.report import to_json, to_markdown
 
@@ -73,6 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         default=25,
         help="Cap active HTTP/nmap hosts (default: 25)",
     )
+    rec.add_argument(
+        "--enrich",
+        action="store_true",
+        help="Also query crt.sh, GitHub, and the site homepage (unconfirmed)",
+    )
     rec.add_argument("--json", action="store_true", help="Write JSON instead of markdown")
     rec.add_argument("-o", "--output", help="Write report here (default: stdout)")
 
@@ -106,6 +113,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Discover clone (default: /opt/discover)",
     )
 
+    en = sub.add_parser(
+        "enrich",
+        help="Public enrich (crt.sh, GitHub, homepage) into a case",
+    )
+    en.add_argument(
+        "target",
+        help="Domain or path to a ReDiscover JSON case",
+    )
+    en.add_argument("--json", action="store_true", help="Write JSON instead of markdown")
+    en.add_argument("-o", "--output", help="Write report here (default: stdout)")
+
     args = parser.parse_args(argv)
     try:
         if args.cmd == "recon":
@@ -124,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
                 active=args.active,
                 nmap=args.nmap,
                 max_hosts=args.max_hosts,
+                enrich=args.enrich,
             )
             return _emit(engagement, args.json, args.output)
         if args.cmd == "person":
@@ -151,6 +170,18 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 sys.stdout.write(text)
             return 0 if all(f.ok for f in findings) else 1
+        if args.cmd == "enrich":
+            target = args.target
+            path = Path(target)
+            if path.is_file():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                engagement = engagement_from_dict(data)
+                if not engagement.domain:
+                    raise ValueError("JSON case has no domain")
+            else:
+                engagement = recon(target, offline=True)
+            run_enrich(engagement)
+            return _emit(engagement, args.json, args.output)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from rediscover.active import plan_active, run_active
+from rediscover.enrich import plan_enrich, run_enrich
 from rediscover.models import Assumption, Engagement, Host, InfoNeed, ToolRun
 from rediscover.passive import plan_passive, run_passive, validate_domain
 from rediscover.person import open_person_links, person_case, plan_person
@@ -102,7 +103,9 @@ def recon(
     active: bool = False,
     nmap: bool = False,
     max_hosts: int = 25,
+    enrich: bool = False,
     runner: Runner | None = None,
+    fetch=None,
 ) -> Engagement:
     target = validate_domain(domain)
     if nmap and not active:
@@ -114,6 +117,8 @@ def recon(
         engagement.tools = plan_passive(target, quick=quick)
         if active:
             engagement.tools.extend(plan_active(nmap=nmap))
+        if enrich:
+            engagement.tools.extend(plan_enrich(target))
         engagement.hosts = [Host(name=target, source="intake")]
         _honesty(engagement)
         return engagement
@@ -125,6 +130,8 @@ def recon(
         if active:
             engagement.mode = "active"
             run_active(engagement, runner, nmap=nmap, max_hosts=max_hosts)
+        if enrich:
+            run_enrich(engagement, fetcher=fetch)
         _honesty(engagement)
         return engagement
     engagement = Engagement(
@@ -135,6 +142,8 @@ def recon(
     run_passive(engagement, runner, quick=quick)
     if active:
         run_active(engagement, runner, nmap=nmap, max_hosts=max_hosts)
+    if enrich:
+        run_enrich(engagement, fetcher=fetch)
     _honesty(engagement)
     return engagement
 

@@ -24,6 +24,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 rediscover recon example.com
 rediscover recon example.com --company 'Example Inc' -o report.md
 rediscover recon example.com --quick
+rediscover recon example.com --quick --enrich
+rediscover enrich example.com
 rediscover recon example.com --quick --active
 rediscover recon example.com --active --nmap --max-hosts 10
 rediscover recon example.com --json
@@ -43,6 +45,7 @@ Grok: `/rediscover` — diagnose Discover, apply `--fix`, then option 18 (`sudo 
 | `--offline` | Do not call whois/DNS/subdomain tools; still write the case |
 | `--dry-run` | Print the tool plan; do not execute |
 | `--quick` | Skip amass, sublist3r, and dnstwist |
+| `--enrich` | crt.sh + GitHub + homepage; new names stay **unconfirmed** |
 | `--active` | Resolve public hosts and HTTP-probe them |
 | `--nmap` | Also `nmap -sV --top-ports 20` on public IPs (requires `--active`) |
 | `--max-hosts` | Cap active HTTP/nmap hosts (default 25) |

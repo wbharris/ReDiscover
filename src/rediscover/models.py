@@ -33,6 +33,7 @@ class Host:
     server: str = ""
     technologies: list[str] = field(default_factory=list)
     nmap: str = ""
+    confirmed: bool = True
 
 
 @dataclass
@@ -90,3 +91,43 @@ class Engagement:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def engagement_from_dict(data: dict[str, Any]) -> Engagement:
+    def _hosts(rows: list) -> list[Host]:
+        out: list[Host] = []
+        fields = set(Host.__dataclass_fields__)
+        for row in rows or []:
+            if isinstance(row, dict):
+                out.append(Host(**{k: v for k, v in row.items() if k in fields}))
+        return out
+
+    def _contacts(rows: list) -> list[Contact]:
+        fields = set(Contact.__dataclass_fields__)
+        return [
+            Contact(**{k: v for k, v in row.items() if k in fields})
+            for row in rows or []
+            if isinstance(row, dict)
+        ]
+
+    def _tools(rows: list) -> list[ToolRun]:
+        fields = set(ToolRun.__dataclass_fields__)
+        return [
+            ToolRun(**{k: v for k, v in row.items() if k in fields})
+            for row in rows or []
+            if isinstance(row, dict)
+        ]
+
+    return Engagement(
+        kind=str(data.get("kind") or "domain"),
+        domain=str(data.get("domain") or ""),
+        company=str(data.get("company") or ""),
+        mode=str(data.get("mode") or "passive"),
+        whois_raw=str(data.get("whois_raw") or ""),
+        registrar=str(data.get("registrar") or ""),
+        org=str(data.get("org") or ""),
+        name_servers=list(data.get("name_servers") or []),
+        hosts=_hosts(data.get("hosts") or []),
+        contacts=_contacts(data.get("contacts") or []),
+        tools=_tools(data.get("tools") or []),
+    )

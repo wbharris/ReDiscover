@@ -120,15 +120,16 @@ Skill: `.grok/skills/rediscover/SKILL.md` (`/rediscover`).
 
 `doctor --fix` repairs: git `safe.directory` / ownership, `/usr/local/bin/discover`, Kali `arp-scan`, Kali `update.sh` (arp-scan + apt Metasploit), sudo `secure_path` (`/etc/sudoers.d/rediscover`), DNSRecon/Sublist3r venvs. Upstream: https://github.com/leebaird/discover/issues/227
 
-## What v0.3 is
+## What v0.4 is
 
 - Grok agent + `rediscover doctor [--fix]`
+- `rediscover enrich` / `recon --enrich` — crt.sh, GitHub PAT, homepage (unconfirmed; not Brave/Google scrape)
 - `rediscover recon DOMAIN` — live passive
 - `rediscover recon DOMAIN --active` — plus HTTP
 - `rediscover recon DOMAIN --active --nmap` — plus nmap
 - `rediscover person FIRST LAST` — search URLs
 
-## What v0.3 is not
+## What v0.4 is not
 
 - A Discover fork or HTML report clone
 - Payloads, listeners, or exploit wrappers

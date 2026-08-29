@@ -5,7 +5,7 @@ description: >
   `rediscover doctor`. Use when the user says ReDiscover, Discover option 18,
   update.sh, arp-scan/questing, snap Metasploit, dubious ownership,
   sudo secure_path, or /rediscover.
-argument-hint: "[doctor --fix | recon DOMAIN | person FIRST LAST]"
+argument-hint: "[doctor --fix | recon DOMAIN | enrich DOMAIN|CASE.json | person FIRST LAST]"
 ---
 
 ReDiscover™ shepherds [Lee Baird’s Discover](https://github.com/leebaird/discover) on this box. Product: `docs/PRODUCT.md` in https://github.com/wbharris/ReDiscover. Discover clone: `/opt/discover`.
@@ -41,9 +41,16 @@ Authorized targets only.
 
 ```bash
 rediscover recon example.com --quick
+rediscover recon TARGET --quick --enrich
+rediscover enrich TARGET
+rediscover enrich case.json --json -o case.json
 rediscover recon TARGET --active
 rediscover person First Last
 ```
+
+`enrich` / `--enrich` queries **crt.sh**, **GitHub** (PAT from `GITHUB_TOKEN` or `~/.theHarvester/api-keys.yaml`), and the **site homepage**. New hosts/emails are `unconfirmed`. It does **not** call Brave/Google/Bing or scrape their HTML.
+
+If the operator wants search-engine-shaped queries after that, use Grok `web_search` on `"DOMAIN"` and `site:DOMAIN`, then merge candidates into the case with source `grok-public` and keep them unconfirmed. Do not invent hosts.
 
 Passive Discover (`./discover.sh`) cannot run as root. Prefer iceroot.
 
