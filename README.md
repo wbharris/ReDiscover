@@ -6,13 +6,13 @@ It also shepherds [Lee Baird’s Discover](https://github.com/leebaird/discover)
 
 Repo: https://github.com/wbharris/ReDiscover
 
-Full contract: [`docs/PRODUCT.md`](docs/PRODUCT.md). Agent loop: [`.grok/skills/rediscover/SKILL.md`](.grok/skills/rediscover/SKILL.md). Credits: [`CREDITS.md`](CREDITS.md).
+Full contract: [`docs/PRODUCT.md`](docs/PRODUCT.md). Credits: [`CREDITS.md`](CREDITS.md).
 
 **Use only on assets you are allowed to test.**
 
 ## Direction
 
-The CLI is the recon case. The skill still doctors Discover.
+The CLI is the recon case. `doctor` still repairs Discover.
 
 1. **One recon** — `rediscover recon DOMAIN` runs the roster, enrich, and probes, and merges every name into one case. `--passive` skips HTTP and port scans. `rediscover tools` shows installed vs missing. It does not install tools, and it does not run exploit scanners.
 2. **Shepherd Discover** — diagnose Update/install breakage (`rediscover doctor`), `--fix` it, then run option 18 as `sudo /opt/discover/misc/update.sh`. Do **not** type Discover’s numbered menu over a pipe.
@@ -47,7 +47,7 @@ sudo rediscover doctor --fix
 sudo /opt/discover/misc/update.sh
 ```
 
-Grok: `/rediscover` — same loop. If the Update log still shows `arp-scan/questing`, `snap: command not found`, `dubious ownership`, or `No module named pip`, run `--fix` again.
+If the Update log still shows `arp-scan/questing`, `snap: command not found`, `dubious ownership`, or `No module named pip`, run `--fix` again.
 
 ## Recon
 
@@ -84,7 +84,7 @@ $BIN enrich TARGET
 $BIN person Jane Doe
 ```
 
-`--enrich` is crt.sh, GitHub, and the homepage. New names stay **unconfirmed**. It does not call Brave/Google/Bing. Search-engine-shaped queries after that are a Grok `web_search` pass, merged as `grok-public`, still unconfirmed.
+`--enrich` is crt.sh, GitHub, and the homepage. New names stay **unconfirmed**. It does not call Brave, Google, or Bing.
 
 Whois that is retired (`.shop`) or malformed (a hostname like `scanme.nmap.org`) falls back to **RDAP**. theHarvester’s author banner is not a target email.
 

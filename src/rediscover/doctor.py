@@ -51,10 +51,14 @@ def _operator() -> str:
     if not _is_root():
         return pwd.getpwuid(os.geteuid()).pw_name
     try:
-        pwd.getpwnam("iceroot")
-        return "iceroot"
+        for entry in pwd.getpwall():
+            if entry.pw_uid < 1000 or entry.pw_name == "nobody":
+                continue
+            if entry.pw_dir.startswith("/home/"):
+                return entry.pw_name
     except KeyError:
-        return "root"
+        pass
+    return "root"
 
 
 def _read(path: Path) -> str:

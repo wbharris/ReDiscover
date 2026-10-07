@@ -1,6 +1,6 @@
 # ReDiscover™ product contract
 
-End goal: one **engagement case** for an authorized domain or person, filled from the recon tools installed on the box. A Grok agent (and the CLI) also **runs Discover on Kali Purple and corrects the failures we hit**.
+End goal: one **engagement case** for an authorized domain or person, filled from the recon tools installed on the box. The CLI also runs Discover on Kali Purple and corrects the failures we hit.
 
 ReDiscover does **not** replace [Lee Baird’s Discover](https://github.com/leebaird/discover). `doctor` shepherds that clone (`/opt/discover`). The case file is ReDiscover’s own report, in the same family as VulNavigator™. Discover stays the bash menu + HTML tree. ReDiscover is `tools` + `recon` + `enrich` + `person` + `doctor`.
 
@@ -110,9 +110,7 @@ Person: summary, search URLs, sources, honesty.
 
 Every tool is `ran`, `skipped`, or `failed` with a reason. Guessed fields are listed. Counts in the summary must match the lists.
 
-## Grok agent
-
-Skill: `.grok/skills/rediscover/SKILL.md` (`/rediscover`).
+## Doctor
 
 1. `rediscover doctor --json`
 2. `sudo rediscover doctor --fix` if anything FAIL
@@ -129,7 +127,7 @@ Skill: `.grok/skills/rediscover/SKILL.md` (`/rediscover`).
 - `rediscover tools` — installed vs missing
 - `rediscover enrich` — crt.sh, GitHub PAT, homepage into an existing case
 - `rediscover person FIRST LAST` — search URLs
-- Grok agent + `rediscover doctor [--fix]` for the Discover clone
+- `rediscover doctor [--fix]` for the Discover clone
 
 ## What v0.6 is not
 

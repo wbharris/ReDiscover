@@ -33,6 +33,9 @@ secrets/
 # Local engagement cases (operator output, not the product)
 cases/
 
+# Local agent notes (not part of the product)
+.grok/
+
 # IDE / editor
 .idea/
 .vscode/
