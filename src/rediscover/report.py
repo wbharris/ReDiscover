@@ -48,12 +48,18 @@ def to_markdown(engagement: Engagement) -> str:
             bits.append(host.server)
         if host.technologies:
             bits.append(", ".join(host.technologies))
+        if host.ports:
+            bits.append("ports " + ", ".join(host.ports))
         if host.url:
             bits.append(host.url)
         src = f" — {host.source}" if host.source else ""
         host_lines.append(" ".join(bits) + src)
     contact_lines = [f"{c.kind}: {c.value} ({c.source})" for c in engagement.contacts]
     link_lines = [f"[{link.title}]({link.url})" for link in engagement.links]
+    shown_urls = engagement.urls[:40]
+    url_lines = list(shown_urls)
+    if len(engagement.urls) > len(shown_urls):
+        url_lines.append(f"and {len(engagement.urls) - len(shown_urls)} more in the JSON case")
     squat_lines = list(engagement.squatting)
     tool_lines = []
     for tool in engagement.tools:
@@ -110,7 +116,7 @@ What would improve this:
     nmap_section = ""
     if nmap_block:
         nmap_section = f"""
-## 9. Nmap
+## 10. Nmap
 
 ```
 {nmap_block}
@@ -125,8 +131,9 @@ What would improve this:
 4. Hosts / subdomains  
 5. People and emails  
 6. Lookalike domains  
-7. Sources  
-8. Confidence and what would improve this  
+7. Historical URLs  
+8. Sources  
+9. Confidence and what would improve this  
 
 ## 1. Engagement summary
 
@@ -139,7 +146,11 @@ What would improve this:
 | DNS records | {len(engagement.dns)} |
 | Contacts | {len(engagement.contacts)} |
 | Lookalikes | {len(engagement.squatting)} |
+| Historical URLs | {len(engagement.urls)} |
+| Open ports | {sum(len(host.ports) for host in engagement.hosts)} |
 | Tools | {_tool_counts(engagement)} |
+
+Names from every tool are merged onto this one host list.
 
 ## 2. Domain identity
 
@@ -163,11 +174,15 @@ What would improve this:
 
 {_bullets(squat_lines)}
 
-## 7. Sources
+## 7. Historical URLs
+
+{_bullets(url_lines)}
+
+## 8. Sources
 
 {_bullets(tool_lines, empty="No tools recorded.")}
 
-## 8. Confidence and what would improve this
+## 9. Confidence and what would improve this
 
 Assumptions:
 

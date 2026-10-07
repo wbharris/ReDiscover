@@ -12,7 +12,7 @@ from rediscover.httpfetch import http_get
 from rediscover.keys import github_token
 from rediscover.models import Assumption, Contact, Engagement, Host, InfoNeed, ToolRun
 from rediscover.passive import DOMAIN_RE, _EMAIL_RE, _PRIVACY_EMAIL
-from rediscover.tools import planned, which
+from rediscover.tools import which
 
 Fetcher = Callable[..., tuple[int, str, str]]
 MAX_HOSTS = 200
@@ -146,10 +146,23 @@ def _add_contact(engagement: Engagement, value: str, source: str) -> None:
 
 
 def plan_enrich(domain: str) -> list[ToolRun]:
-    steps = [planned("crt.sh", ["GET", f"https://crt.sh/?q={domain}&output=json"])]
+    # These are ReDiscover HTTP calls, not binaries on PATH.
+    steps = [
+        ToolRun(
+            name="crt.sh",
+            status="planned",
+            command=["GET", f"https://crt.sh/?q={domain}&output=json"],
+        )
+    ]
     token = github_token()
     if token:
-        steps.append(planned("github-search", ["GET", "https://api.github.com/search/code"]))
+        steps.append(
+            ToolRun(
+                name="github-search",
+                status="planned",
+                command=["GET", "https://api.github.com/search/code"],
+            )
+        )
     else:
         steps.append(
             ToolRun(
@@ -158,7 +171,13 @@ def plan_enrich(domain: str) -> list[ToolRun]:
                 reason="no GitHub token in GITHUB_TOKEN or ~/.theHarvester/api-keys.yaml",
             )
         )
-    steps.append(planned("homepage", ["GET", f"https://{domain}"]))
+    steps.append(
+        ToolRun(
+            name="homepage",
+            status="planned",
+            command=["GET", f"https://{domain}"],
+        )
+    )
     return steps
 
 

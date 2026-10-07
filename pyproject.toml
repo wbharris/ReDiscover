@@ -1,7 +1,7 @@
 [project]
 name = "rediscover-recon"
-version = "0.4.2"
-description = "ReDiscover™ — Kali recon, and a doctor for Discover on Kali Purple."
+version = "0.6.2"
+description = "ReDiscover™ — recon case from the tools on this box, and a doctor for Discover."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }

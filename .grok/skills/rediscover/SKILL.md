@@ -1,14 +1,14 @@
 ---
 name: rediscover
 description: >
-  Run Discover on Kali Purple and correct Update/install failures via
-  `rediscover doctor`. Use when the user says ReDiscover, Discover option 18,
-  update.sh, arp-scan/questing, snap Metasploit, dubious ownership,
-  sudo secure_path, or /rediscover.
-argument-hint: "[doctor --fix | recon DOMAIN | enrich DOMAIN|CASE.json | person FIRST LAST]"
+  Recon case from the tools installed on this box, plus Discover doctor on
+  Kali Purple. Use when the user says ReDiscover, rediscover recon,
+  rediscover tools, Discover option 18, update.sh, arp-scan/questing,
+  snap Metasploit, dubious ownership, sudo secure_path, or /rediscover.
+argument-hint: "[tools | recon DOMAIN | doctor --fix | enrich DOMAIN|CASE.json | person FIRST LAST]"
 ---
 
-ReDiscover™ shepherds [Lee Baird’s Discover](https://github.com/leebaird/discover) on this box. Product: `docs/PRODUCT.md` in https://github.com/wbharris/ReDiscover. Discover clone: `/opt/discover`. CLI: `/home/iceroot/Projects/ReDiscover/.venv/bin/rediscover` (`rediscover` is not on iceroot PATH).
+ReDiscover™ writes one recon case from the tools already installed on this box (`rediscover tools`, `rediscover recon`). It also shepherds [Lee Baird’s Discover](https://github.com/leebaird/discover). Product: `docs/PRODUCT.md` in https://github.com/wbharris/ReDiscover. Discover clone: `/opt/discover`. CLI: `/home/iceroot/Projects/ReDiscover/.venv/bin/rediscover` (`rediscover` is not on iceroot PATH). Do not install recon tools from the agent unless the operator asks. Do not add nuclei, wordlist brute force, payloads, listeners, or an autonomous attack agent.
 
 Do not drive Discover’s numbered menu over stdin. Option 18 is `sudo /opt/discover/misc/update.sh` after doctor. Recon is `rediscover recon`. Run recon as **iceroot**, not root.
 
@@ -51,9 +51,10 @@ Authorized targets only. Prefer iceroot. PATH for Discover/ReDiscover recon:
 BIN=/home/iceroot/Projects/ReDiscover/.venv/bin/rediscover
 PATH="/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:$HOME/theHarvester/.venv/bin"
 
-$BIN recon example.com --quick --enrich
-$BIN recon ginandjuice.shop --quick --enrich --active --max-hosts 1
-$BIN recon scanme.nmap.org --quick --active --max-hosts 1 --nmap
+$BIN tools
+$BIN recon example.com --quick --passive
+$BIN recon ginandjuice.shop --quick --no-ports --max-hosts 1
+$BIN recon scanme.nmap.org --quick --max-hosts 1
 $BIN enrich TARGET
 $BIN enrich case.json --json -o case.json
 $BIN person First Last
@@ -65,17 +66,23 @@ Write cases to `ReDiscover/cases/` (`--json` plus markdown). `cases/` is gitigno
 
 | Target | Use for | Do not |
 |--------|---------|--------|
-| `example.com` | DNS/whois/enrich smoke | nmap |
-| `ginandjuice.shop` | Passive + light Active web (PortSwigger invited scanners) | theHarvester/nmap on `portswigger.net`; do not add `ginandjuice.com` / `.mx` |
-| `scanme.nmap.org` | `--active --nmap` (Fyodor’s public grant) | HTTP/nmap `nmap.org` or other Nmap hosts |
+| `example.com` | `--passive` DNS/whois/enrich smoke | default `recon` (it port-scans); nmap |
+| `ginandjuice.shop` | `--no-ports --max-hosts 1` web probe | nmap; theHarvester/nmap on `portswigger.net`; do not add `ginandjuice.com` / `.mx` |
+| `scanme.nmap.org` | `recon --max-hosts 1` (Fyodor’s public grant) | HTTP/nmap `nmap.org` or other Nmap hosts |
 
 There is **no** SANS public recon student host. **Do not scan `sans.org` / `sans.edu`.**
 
-`--quick` skips amass, sublist3r, dnstwist. `--nmap` requires `--active`. `--max-hosts 1` is the light first pass.
+`rediscover recon DOMAIN` is the single pane. It runs the roster, then crt.sh, GitHub, and the homepage, then resolves and probes the merged host list, and writes one case. Missing binaries are skipped. It does not install them.
+
+Passive host tools: subfinder (`-all` unless `--quick`), assetfinder, findomain, and (unless `--quick`) amass, sublist3r, and chaos. Chaos runs only when `CHAOS_KEY` or `PDCP_API_KEY` is set. `--quick` also skips dnstwist, gau, waybackurls, and urlfinder. Those URL tools store at most 200 in-scope URLs and do not fetch them.
+
+Probes are on by default: dnsx (or dig/host), httpx, whatweb (`--quiet --no-errors --log-json=-`), tlsx, naabu, and nmap top 20. tlsx names stay unconfirmed and are not probed again in that run. `--passive` skips those connections. `--no-ports` keeps HTTP and skips naabu and nmap. `--max-hosts 1` is the light first pass. Do not run a default recon against `example.com` or `ginandjuice.shop`; those labs use `--passive` and `--no-ports`. Do not add nuclei, puredns, shuffledns, alterx, katana, or uncover.
+
+Kali naabu 2.6.1 accepts `-top-ports` only as `100`, `1000`, or `full`. ReDiscover passes `-p` with the same 20 ports as `nmap --top-ports 20`, plus `-duc -no-stdin`. Open nmap ports are copied onto `Host.ports`. subfinder writes its host list only after sources finish, so the argv includes `-duc` and `-max-time` (1 minute on `--quick`, 2 on a full run) inside the process timeout. crt.sh HTTP 502 stays a recorded failure. Chaos still needs `CHAOS_KEY` or `PDCP_API_KEY`.
 
 ### Enrich
 
-`--enrich` queries **crt.sh**, **GitHub** (PAT from `GITHUB_TOKEN` or `~/.theHarvester/api-keys.yaml`), and the **site homepage**. New hosts/emails are `unconfirmed`. It does **not** call Brave/Google/Bing.
+A normal `recon` already queries **crt.sh**, **GitHub** (PAT from `GITHUB_TOKEN` or `~/.theHarvester/api-keys.yaml`), and the **site homepage** before the probe. New hosts/emails stay `unconfirmed`. `--no-enrich` skips that step. It does **not** call Brave/Google/Bing.
 
 If the operator wants search-engine-shaped queries after that, use Grok `web_search` on `"DOMAIN"` and `site:DOMAIN`, merge as source `grok-public`, keep **unconfirmed**. Do not invent hosts. Do not treat lab fiction (e.g. Carlos Montoya on the shop) as people-OSINT.
 

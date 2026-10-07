@@ -7,6 +7,7 @@ from rediscover.models import (
     Assumption,
     DnsRecord,
     Engagement,
+    Host,
     InfoNeed,
     engagement_from_dict,
 )
@@ -152,6 +153,8 @@ def test_engagement_from_dict_roundtrip_dns_honesty():
         mode="active",
         registrar="Example Registrar",
         dns=[DnsRecord(type="A", value="93.184.216.34")],
+        hosts=[Host(name="example.com", ports=["80/tcp"])],
+        urls=["https://example.com/a"],
         assumptions=[
             Assumption(field="live_lookups", assumed="ok", because="test"),
         ],
@@ -159,6 +162,8 @@ def test_engagement_from_dict_roundtrip_dns_honesty():
     )
     loaded = engagement_from_dict(json.loads(to_json(engagement)))
     assert loaded.dns[0].value == "93.184.216.34"
+    assert loaded.hosts[0].ports == ["80/tcp"]
+    assert loaded.urls == ["https://example.com/a"]
     assert loaded.assumptions[0].field == "live_lookups"
     assert loaded.improve[0].question == "nmap?"
     md = to_markdown(loaded)

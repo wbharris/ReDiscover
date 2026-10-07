@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from rediscover.cli import main
@@ -25,6 +26,22 @@ def test_cli_nmap_requires_active(capsys):
     assert "--nmap requires --active" in err
 
 
+def test_cli_dry_run_is_the_full_roster(capsys):
+    assert main(["recon", "example.com", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "`dry-run`" in out
+    assert "crt.sh" in out
+    assert "httpx" in out or "curl" in out
+    assert "nmap" in out
+
+
+def test_cli_passive_skips_ports(capsys):
+    assert main(["recon", "example.com", "--dry-run", "--passive"]) == 0
+    out = capsys.readouterr().out
+    assert "subfinder" in out
+    assert "nmap" not in out
+
+
 def test_cli_dry_run_active(capsys):
     assert main(["recon", "example.com", "--dry-run", "--active"]) == 0
     out = capsys.readouterr().out
@@ -37,6 +54,16 @@ def test_cli_json_and_output(tmp_path: Path):
     assert main(["recon", "example.com", "--offline", "--json", "-o", str(dest)]) == 0
     text = dest.read_text(encoding="utf-8")
     assert '"domain": "example.com"' in text
+
+
+def test_cli_tools_roster(capsys):
+    assert main(["tools", "--json"]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    names = {row["name"] for row in rows}
+    assert {"subfinder", "assetfinder", "findomain", "gau", "urlfinder", "dnsx", "tlsx", "naabu", "nmap"} <= names
+    assert "nuclei" not in names
+    assert "katana" not in names
+    assert "artex" not in names
 
 
 def test_cli_version(capsys):

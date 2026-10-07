@@ -74,6 +74,7 @@ def run(
     argv: Sequence[str],
     *,
     timeout: int = DEFAULT_TIMEOUT,
+    stdin: str | None = None,
 ) -> ToolRun:
     binary = argv[0] if argv else ""
     path = which(binary)
@@ -92,13 +93,32 @@ def run(
             text=True,
             timeout=timeout,
             check=False,
+            input=stdin,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", "replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", "replace")
+        text = stdout.strip()
+        err = stderr.strip()
+        reason = f"timed out after {timeout}s"
+        if text:
+            return ToolRun(
+                name=name,
+                status="ran",
+                command=cmd,
+                output=text,
+                reason=reason,
+            )
         return ToolRun(
             name=name,
             status="failed",
             command=cmd,
-            reason=f"timed out after {timeout}s",
+            output=err,
+            reason=reason,
         )
     except OSError as exc:
         return ToolRun(

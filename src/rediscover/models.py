@@ -32,6 +32,7 @@ class Host:
     title: str = ""
     server: str = ""
     technologies: list[str] = field(default_factory=list)
+    ports: list[str] = field(default_factory=list)
     nmap: str = ""
     confirmed: bool = True
 
@@ -76,6 +77,7 @@ class Engagement:
     name_servers: list[str] = field(default_factory=list)
     dns: list[DnsRecord] = field(default_factory=list)
     hosts: list[Host] = field(default_factory=list)
+    urls: list[str] = field(default_factory=list)
     contacts: list[Contact] = field(default_factory=list)
     links: list[SearchLink] = field(default_factory=list)
     squatting: list[str] = field(default_factory=list)
@@ -116,6 +118,7 @@ def engagement_from_dict(data: dict[str, Any]) -> Engagement:
         name_servers=list(data.get("name_servers") or []),
         dns=_rows(DnsRecord, data.get("dns")),
         hosts=_rows(Host, data.get("hosts")),
+        urls=[str(item) for item in (data.get("urls") or [])],
         contacts=_rows(Contact, data.get("contacts")),
         links=_rows(SearchLink, data.get("links")),
         squatting=[str(item) for item in (data.get("squatting") or [])],

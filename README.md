@@ -1,8 +1,8 @@
 # ReDiscover™
 
-A **Grok skill** plus a small CLI that **runs [Lee Baird’s Discover](https://github.com/leebaird/discover) on Kali Purple and corrects the failures we hit**, and still writes one **engagement case**.
+One recon command. It runs the tools already on the box (subfinder, assetfinder, findomain, amass, gau, dnsx, httpx, naabu, nmap, and the rest of the roster), pulls crt.sh, GitHub, and the homepage into the same host list, then writes one engagement file. Missing tools are skipped and named. `rediscover tools` shows what is installed. It does not install them.
 
-Not a Discover fork. Discover stays the bash menu and HTML tree at `/opt/discover`. ReDiscover is `doctor` + `recon` + `person` + `enrich`. No Metasploit payloads or listeners.
+It also shepherds [Lee Baird’s Discover](https://github.com/leebaird/discover) on Kali Purple (`rediscover doctor`). Discover stays the bash menu and HTML tree at `/opt/discover`. ReDiscover is `tools` + `recon` + `enrich` + `person` + `doctor`. No payloads, listeners, nuclei, or path brute force.
 
 Repo: https://github.com/wbharris/ReDiscover
 
@@ -12,12 +12,12 @@ Full contract: [`docs/PRODUCT.md`](docs/PRODUCT.md). Agent loop: [`.grok/skills/
 
 ## Direction
 
-The skill is the operator. The CLI is the case file.
+The CLI is the recon case. The skill still doctors Discover.
 
-1. **Shepherd Discover** — diagnose Update/install breakage (`rediscover doctor`), `--fix` it, then run option 18 as `sudo /opt/discover/misc/update.sh`. Do **not** type Discover’s numbered menu over a pipe.
-2. **When Discover recon is the job** — call the scripts with `DISCOVER_SOURCE_ONLY=1` (Passive cannot be root; Active needs a Passive report; Scanning is nmap, not Domain → Active).
-3. **When one case file is the job** — `rediscover recon` / `enrich` / `person`. That is ReDiscover’s report, not `$HOME/data/DOMAIN` HTML.
-4. **Stay honest** — missing tools are skipped and named; new enrich hosts stay unconfirmed; lab fiction is not people-OSINT.
+1. **One recon** — `rediscover recon DOMAIN` runs the roster, enrich, and probes, and merges every name into one case. `--passive` skips HTTP and port scans. `rediscover tools` shows installed vs missing. It does not install tools, and it does not run exploit scanners.
+2. **Shepherd Discover** — diagnose Update/install breakage (`rediscover doctor`), `--fix` it, then run option 18 as `sudo /opt/discover/misc/update.sh`. Do **not** type Discover’s numbered menu over a pipe.
+3. **When Discover’s own HTML is the job** — call the scripts with `DISCOVER_SOURCE_ONLY=1` (Passive cannot be root; Active needs a Passive report; Scanning is nmap, not Domain → Active).
+4. **Stay honest** — missing tools are skipped and named; archive URLs stay capped and unfetched; new enrich hosts stay unconfirmed; lab fiction is not people-OSINT.
 
 Kali-specific repairs the skill expects `doctor --fix` to own: Ubuntu `arp-scan/questing`, snap Metasploit vs apt, git dubious ownership, sudo `secure_path` missing `/usr/local/bin`, Python 3.14 venvs without pip, Kali **amass** wrapping `sudo libpostal_data`, **uv** only in `~/.local/bin`, Discover Active treating `127.0.0.1` as public, operator password for `sudo nmap`. `git pull` can wipe the Discover-side patches; doctor reapplies them.
 
@@ -60,15 +60,15 @@ Two different jobs. Do not mix their outputs.
 | Discover Active | `recon/active.sh` after Passive | httpx, whatweb, **gowitness** into that report |
 | Discover Scanning | `scan/nmap.sh` (full TCP/UDP) | nmap folder + `report.txt` |
 
-ReDiscover `--active` is httpx/whatweb (optional nmap **top 20**). That is **not** Discover Domain → Active (gowitness) and **not** Discover Scanning (`-p-` + UDP).
+`rediscover recon` resolves (dnsx or dig), probes with httpx, and runs naabu plus nmap on the **top 20** ports. `--passive` skips those connections. `--no-ports` keeps HTTP and skips the port scan. That is **not** Discover Domain → Active (gowitness) and **not** Discover Scanning (`-p-` + UDP).
 
 Authorized first-test labs only:
 
 | Target | Use for | Do not |
 |--------|---------|--------|
-| `example.com` | DNS/whois/enrich smoke | nmap |
-| `ginandjuice.shop` | Passive + Active web (PortSwigger invited scanners) | `portswigger.net`; `ginandjuice.com` / `.mx` |
-| `scanme.nmap.org` | Active nmap (Fyodor’s public grant) | `nmap.org` or other Nmap hosts |
+| `example.com` | `--passive` (DNS, whois, enrich). No port scan | default `recon` (it includes nmap) |
+| `ginandjuice.shop` | `--no-ports --max-hosts 1` (web probe, no nmap) | `portswigger.net`; `ginandjuice.com` / `.mx` |
+| `scanme.nmap.org` | `recon` with `--max-hosts 1` (Fyodor’s public grant) | `nmap.org` or other Nmap hosts |
 
 There is no SANS public recon student host. **Do not scan `sans.org` / `sans.edu`.**
 
@@ -76,9 +76,10 @@ There is no SANS public recon student host. **Do not scan `sans.org` / `sans.edu
 BIN=./.venv/bin/rediscover
 export PATH="/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:$HOME/theHarvester/.venv/bin"
 
-$BIN recon example.com --quick --enrich
-$BIN recon ginandjuice.shop --quick --enrich --active --max-hosts 1
-$BIN recon scanme.nmap.org --quick --active --max-hosts 1 --nmap
+$BIN tools
+$BIN recon example.com --quick --passive
+$BIN recon ginandjuice.shop --quick --no-ports --max-hosts 1
+$BIN recon scanme.nmap.org --quick --max-hosts 1
 $BIN enrich TARGET
 $BIN person Jane Doe
 ```
@@ -90,10 +91,12 @@ Whois that is retired (`.shop`) or malformed (a hostname like `scanme.nmap.org`)
 ## CLI flags
 
 ```bash
-rediscover recon example.com --company 'Example Inc' -o report.md
-rediscover recon example.com --quick --active --nmap --max-hosts 10 --json
+rediscover tools
+rediscover recon example.com --passive --company 'Example Inc' -o report.md
+rediscover recon scanme.nmap.org --quick --max-hosts 1 --json
 rediscover recon example.com --offline
-rediscover recon example.com --dry-run --active --nmap
+rediscover recon example.com --dry-run
+rediscover recon example.com --dry-run --passive
 rediscover person Jane Doe --open
 rediscover doctor
 sudo rediscover doctor --fix
@@ -104,11 +107,13 @@ sudo rediscover doctor --fix
 | `--company` | Organization name on the report |
 | `--offline` | Do not call whois/DNS/subdomain tools; still write the case |
 | `--dry-run` | Print the tool plan; do not execute |
-| `--quick` | Skip amass, sublist3r, and dnstwist |
-| `--enrich` | crt.sh + GitHub + homepage; new names stay **unconfirmed** |
-| `--active` | Resolve public hosts and HTTP-probe them |
-| `--nmap` | Also `nmap -sV --top-ports 20` on public IPs (requires `--active`) |
-| `--max-hosts` | Cap active HTTP/nmap hosts (default 25) |
+| *(default)* | Roster + crt.sh/GitHub/homepage + resolve + HTTP + top-20 ports, one case |
+| `--passive` | Skip HTTP probes, naabu, and nmap. Enrich still runs |
+| `--no-ports` | Keep the HTTP probe. Skip naabu and nmap |
+| `--no-enrich` | Skip crt.sh, GitHub, and the homepage |
+| `--quick` | Skip amass, sublist3r, dnstwist, chaos, gau, waybackurls, and urlfinder. subfinder runs without `-all` and with `-max-time 1` |
+| `--enrich` | With `--offline`, also run enrich. On a normal recon, enrich is already on |
+| `--max-hosts` | Cap HTTP and port-scan hosts (default 25) |
 | `--json` | Case file instead of markdown |
 | `-o` | Write to a file (default: stdout) |
 | `--open` | (`person` only) open search URLs in Firefox |
@@ -122,11 +127,12 @@ Local cases belong under `cases/` (gitignored). Discover HTML stays under `$HOME
 1. Engagement summary
 2. Domain identity (or person search URLs)
 3. DNS
-4. Hosts / subdomains (HTTP status when `--active`)
+4. Hosts / subdomains (HTTP status when `--active`, ports when `--nmap`)
 5. People and emails
 6. Lookalike domains
-7. Sources (commands)
-8. Confidence and what would improve this
+7. Historical URLs (capped; not fetched)
+8. Sources (commands)
+9. Confidence and what would improve this
 
 ## Trademark
 

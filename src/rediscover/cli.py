@@ -1,4 +1,4 @@
-"""CLI: rediscover recon DOMAIN | rediscover person FIRST LAST."""
+"""CLI: rediscover recon | tools | person | doctor | enrich."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from rediscover.enrich import run_enrich
 from rediscover.models import engagement_from_dict
 from rediscover.pipeline import person, recon
 from rediscover.report import to_json, to_markdown
+from rediscover.roster import inventory, tools_markdown
 
 
 def _emit(engagement, as_json: bool, output: str | None) -> int:
@@ -28,7 +29,7 @@ def _emit(engagement, as_json: bool, output: str | None) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="rediscover",
-        description="ReDiscover™ — Kali recon into one engagement case.",
+        description="ReDiscover™ — recon case from the tools on this box.",
     )
     parser.add_argument(
         "-V",
@@ -41,7 +42,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    rec = sub.add_parser("recon", help="Domain recon (passive, optional active)")
+    rec = sub.add_parser(
+        "recon",
+        help="Run the recon roster and write one case",
+    )
     rec.add_argument("domain", help="Target domain, e.g. example.com")
     rec.add_argument("--company", default="", help="Organization name on the report")
     rec.add_argument(
@@ -57,17 +61,32 @@ def main(argv: list[str] | None = None) -> int:
     rec.add_argument(
         "--quick",
         action="store_true",
-        help="Skip amass, sublist3r, and dnstwist",
+        help="Skip amass, sublist3r, dnstwist, chaos, gau, waybackurls, and urlfinder",
+    )
+    rec.add_argument(
+        "--passive",
+        action="store_true",
+        help="Do not connect: skip HTTP probes, naabu, and nmap",
     )
     rec.add_argument(
         "--active",
         action="store_true",
-        help="Resolve public hosts and HTTP-probe them",
+        help="HTTP-probe when combined with --offline (on by default otherwise)",
+    )
+    rec.add_argument(
+        "--no-ports",
+        action="store_true",
+        help="Skip naabu and nmap",
     )
     rec.add_argument(
         "--nmap",
         action="store_true",
-        help="Also nmap -sV --top-ports 20 on public IPs (requires --active)",
+        help="Top-20 ports with naabu and nmap -sV (on unless --passive or --no-ports)",
+    )
+    rec.add_argument(
+        "--no-enrich",
+        action="store_true",
+        help="Skip crt.sh, GitHub, and the homepage",
     )
     rec.add_argument(
         "--max-hosts",
@@ -78,10 +97,14 @@ def main(argv: list[str] | None = None) -> int:
     rec.add_argument(
         "--enrich",
         action="store_true",
-        help="Also query crt.sh, GitHub, and the site homepage (unconfirmed)",
+        help="Include crt.sh, GitHub, and the homepage (on unless --no-enrich)",
     )
     rec.add_argument("--json", action="store_true", help="Write JSON instead of markdown")
     rec.add_argument("-o", "--output", help="Write report here (default: stdout)")
+
+    tools = sub.add_parser("tools", help="Show which recon tools are installed")
+    tools.add_argument("--json", action="store_true", help="Write JSON instead of a table")
+    tools.add_argument("-o", "--output", help="Write the roster here (default: stdout)")
 
     per = sub.add_parser("person", help="Person recon (search URLs, optional --open)")
     per.add_argument("first", help="First name")
@@ -130,21 +153,50 @@ def main(argv: list[str] | None = None) -> int:
             if args.offline and args.dry_run:
                 print("Use either --offline or --dry-run, not both.", file=sys.stderr)
                 return 2
+            if args.passive and (args.active or args.nmap):
+                print(
+                    "--passive skips HTTP probes and port scans.",
+                    file=sys.stderr,
+                )
+                return 2
+            if args.no_ports and args.nmap:
+                print("Use either --no-ports or --nmap, not both.", file=sys.stderr)
+                return 2
             if args.max_hosts < 1:
                 print("--max-hosts must be >= 1", file=sys.stderr)
                 return 2
+            if args.offline:
+                active = bool(args.active)
+                do_ports = bool(args.nmap)
+                do_enrich = bool(args.enrich)
+            else:
+                active = not args.passive
+                do_ports = active and not args.no_ports
+                do_enrich = not args.no_enrich
             engagement = recon(
                 args.domain,
                 company=args.company,
                 offline=args.offline,
                 dry_run=args.dry_run,
                 quick=args.quick,
-                active=args.active,
-                nmap=args.nmap,
+                passive=False,
+                active=active,
+                nmap=do_ports,
                 max_hosts=args.max_hosts,
-                enrich=args.enrich,
+                enrich=do_enrich,
             )
             return _emit(engagement, args.json, args.output)
+        if args.cmd == "tools":
+            text = (
+                json.dumps(inventory(), indent=2) + "\n"
+                if args.json
+                else tools_markdown()
+            )
+            if args.output:
+                Path(args.output).write_text(text, encoding="utf-8")
+            else:
+                sys.stdout.write(text)
+            return 0
         if args.cmd == "person":
             if args.dry_run and args.open_links:
                 print("Use either --dry-run or --open, not both.", file=sys.stderr)

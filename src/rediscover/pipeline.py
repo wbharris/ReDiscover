@@ -9,6 +9,7 @@ from rediscover.enrich import plan_enrich, run_enrich
 from rediscover.models import Assumption, Engagement, Host, InfoNeed, ToolRun
 from rediscover.passive import plan_passive, run_passive, validate_domain
 from rediscover.person import open_person_links, person_case, plan_person
+from rediscover.roster import HOST_SOURCES, MAX_URLS, URL_SOURCES
 
 Runner = Callable[[str, list[str]], ToolRun]
 
@@ -59,14 +60,27 @@ def _honesty(engagement: Engagement) -> None:
                 why_it_matters="Hosts and mail/name servers",
             )
         )
-    if not any(
-        t.name in {"subfinder", "amass", "sublist3r"} and t.status == "ran"
-        for t in engagement.tools
-    ):
+    if not any(t.name in HOST_SOURCES and t.status == "ran" for t in engagement.tools):
         engagement.improve.append(
             InfoNeed(
-                question="Install subfinder, amass, or sublist3r",
+                question="Install subfinder, assetfinder, findomain, amass, or sublist3r",
                 why_it_matters="Passive subdomain coverage",
+            )
+        )
+    url_tools = [t for t in engagement.tools if t.name in URL_SOURCES]
+    if url_tools and not any(t.status == "ran" for t in url_tools):
+        engagement.improve.append(
+            InfoNeed(
+                question="Install gau, waybackurls, or urlfinder",
+                why_it_matters="Historical URLs from public archives",
+            )
+        )
+    if len(engagement.urls) >= MAX_URLS:
+        engagement.assumptions.append(
+            Assumption(
+                field="urls",
+                assumed=f"capped at {MAX_URLS}",
+                because="archive tools can return more than the case keeps",
             )
         )
     if engagement.mode in {"passive", "active"} and not any(
@@ -100,26 +114,61 @@ def recon(
     offline: bool = False,
     dry_run: bool = False,
     quick: bool = False,
-    active: bool = False,
-    nmap: bool = False,
+    passive: bool = False,
+    active: bool | None = None,
+    nmap: bool | None = None,
     max_hosts: int = 25,
-    enrich: bool = False,
+    enrich: bool | None = None,
     runner: Runner | None = None,
     fetch=None,
 ) -> Engagement:
+    """One recon: roster, enrich, then probes, merged into one case.
+
+    Defaults are the full pass. ``--passive`` skips HTTP, naabu, and nmap.
+    ``offline`` stays a skeleton unless active/nmap/enrich are passed explicitly.
+    """
     target = validate_domain(domain)
+    if passive and (active or nmap):
+        raise ValueError("--passive skips HTTP probes and port scans")
+    if passive:
+        active = False
+        nmap = False
+    if active is None:
+        active = not offline
+    if nmap is None:
+        nmap = bool(active)
+    if enrich is None:
+        enrich = not offline
     if nmap and not active:
         raise ValueError("--nmap requires --active")
+
+    def _fill(engagement: Engagement) -> None:
+        # Enrich before probes so crt.sh and homepage names are on the host list.
+        if enrich:
+            if dry_run:
+                engagement.tools.extend(plan_enrich(target))
+            else:
+                run_enrich(engagement, fetcher=fetch)
+        if active:
+            if dry_run:
+                engagement.tools.extend(plan_active(nmap=nmap))
+            else:
+                if engagement.mode != "dry-run":
+                    engagement.mode = "active"
+                run_active(engagement, runner, nmap=bool(nmap), max_hosts=max_hosts)
+            engagement.improve = [
+                item
+                for item in engagement.improve
+                if "Probe new enrich hosts" not in item.question
+            ]
+
     if dry_run:
         engagement = Engagement(
             domain=target, company=company.strip(), mode="dry-run"
         )
         engagement.tools = plan_passive(target, quick=quick)
-        if active:
-            engagement.tools.extend(plan_active(nmap=nmap))
-        if enrich:
-            engagement.tools.extend(plan_enrich(target))
         engagement.hosts = [Host(name=target, source="intake")]
+        _fill(engagement)
         _honesty(engagement)
         return engagement
     if offline:
@@ -127,11 +176,7 @@ def recon(
             domain=target, company=company.strip(), mode="offline"
         )
         engagement.hosts = [Host(name=target, source="intake")]
-        if active:
-            engagement.mode = "active"
-            run_active(engagement, runner, nmap=nmap, max_hosts=max_hosts)
-        if enrich:
-            run_enrich(engagement, fetcher=fetch)
+        _fill(engagement)
         _honesty(engagement)
         return engagement
     engagement = Engagement(
@@ -140,10 +185,7 @@ def recon(
         mode="active" if active else "passive",
     )
     run_passive(engagement, runner, quick=quick, fetch=fetch)
-    if active:
-        run_active(engagement, runner, nmap=nmap, max_hosts=max_hosts)
-    if enrich:
-        run_enrich(engagement, fetcher=fetch)
+    _fill(engagement)
     _honesty(engagement)
     return engagement
 

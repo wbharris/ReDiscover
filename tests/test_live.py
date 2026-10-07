@@ -28,7 +28,7 @@ def _runner(name: str, argv: list[str]) -> ToolRun:
 
 
 def test_live_passive_example_com():
-    engagement = recon("example.com", quick=True, runner=_runner)
+    engagement = recon("example.com", quick=True, passive=True, runner=_runner)
     assert engagement.domain == "example.com"
     assert any(t.name == "whois" and t.status == "ran" for t in engagement.tools)
     assert any(t.name.startswith("dns-") and t.status == "ran" for t in engagement.tools)
@@ -40,6 +40,7 @@ def test_live_active_example_com():
         "example.com",
         offline=True,
         active=True,
+        nmap=False,
         max_hosts=1,
         runner=_runner,
     )

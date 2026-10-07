@@ -1,13 +1,15 @@
-"""Passive recon: whois, DNS, subdomain tools, squatting, mail."""
+"""Passive recon: whois, DNS, subdomain tools, archives, squatting, mail."""
 
 from __future__ import annotations
 
 import json
 import re
 from collections.abc import Callable
+from urllib.parse import urlparse
 
 from rediscover.models import Assumption, Contact, DnsRecord, Engagement, Host, ToolRun
 from rediscover.netutil import is_private_ipv4
+from rediscover.roster import HOST_SOURCES, MAX_URLS, URL_SOURCES, chaos_key
 from rediscover.tools import planned, run, which
 
 DOMAIN_RE = re.compile(
@@ -117,8 +119,14 @@ def _parse_host(rtype: str, output: str) -> list[DnsRecord]:
 
 def _host_from_line(domain: str, line: str, source: str) -> Host | None:
     name = line.strip().split()[0].strip().lower().rstrip(".") if line.strip() else ""
+    if name.startswith("*."):
+        name = name[2:]
     name = name.removeprefix("www.")
+    if not name or any(ch in name for ch in "*/:[]@"):
+        return None
     if name != domain and not name.endswith("." + domain):
+        return None
+    if not DOMAIN_RE.fullmatch(name):
         return None
     return Host(name=name, source=source)
 
@@ -130,7 +138,7 @@ def collect_hosts(domain: str, runs: list[ToolRun]) -> list[Host]:
     for tool in runs:
         if tool.status != "ran" or not tool.output:
             continue
-        if tool.name not in {"subfinder", "amass", "sublist3r"}:
+        if tool.name not in HOST_SOURCES:
             continue
         for line in tool.output.splitlines():
             host = _host_from_line(domain, line, tool.name)
@@ -312,27 +320,72 @@ def _should_rdap(engagement: Engagement) -> bool:
     return whois_needs_rdap(whois.output)
 
 
-def _step(name: str, argv: list[str], timeout: int, runner: Runner | None) -> ToolRun:
+def _step(
+    name: str,
+    argv: list[str],
+    timeout: int,
+    runner: Runner | None,
+    *,
+    stdin: str | None = None,
+) -> ToolRun:
     if runner is not None:
         return runner(name, argv)
-    return run(name, argv, timeout=timeout)
+    return run(name, argv, timeout=timeout, stdin=stdin)
+
+
+def url_in_scope(url: str, domain: str) -> bool:
+    host = (urlparse(url).hostname or "").lower().rstrip(".")
+    return bool(host) and (host == domain or host.endswith("." + domain))
+
+
+def scoped_urls(output: str, domain: str, *, limit: int = MAX_URLS) -> list[str]:
+    """Keep http(s) URLs whose host is the domain. Cap the list."""
+    found: list[str] = []
+    seen: set[str] = set()
+    if limit < 1:
+        return found
+    for line in (output or "")[:500_000].splitlines():
+        url = line.strip()
+        if not url.startswith(("http://", "https://")):
+            continue
+        if not url_in_scope(url, domain) or url in seen:
+            continue
+        seen.add(url)
+        found.append(url)
+        if len(found) >= limit:
+            break
+    return found
 
 
 def passive_steps(domain: str, *, quick: bool = False) -> list[tuple[str, list[str], int]]:
     steps: list[tuple[str, list[str], int]] = [("whois", ["whois", domain], 45)]
     for rtype in ("A", "AAAA", "MX", "NS", "TXT", "SOA", "CNAME"):
         steps.append((f"dns-{rtype.lower()}", _dns_argv(domain, rtype), 20))
-    steps.append(("subfinder", ["subfinder", "-d", domain, "-silent"], 120))
-    if not quick:
-        steps.append(("amass", ["amass", "enum", "-passive", "-d", domain], 180))
-        steps.append(("sublist3r", ["sublist3r", "-d", domain, "-n"], 120))
+    # subfinder prints hosts only after its sources finish. -max-time is minutes.
+    # It must end before the process timeout, or the kill discards the list.
+    if quick:
+        steps.append(
+            ("subfinder", ["subfinder", "-d", domain, "-silent", "-duc", "-max-time", "1"], 120)
+        )
+    else:
         steps.append(
             (
-                "dnstwist",
-                ["dnstwist", "-r", "-f", "json", domain],
+                "subfinder",
+                ["subfinder", "-d", domain, "-all", "-silent", "-duc", "-max-time", "2"],
                 180,
             )
         )
+    steps.append(("assetfinder", ["assetfinder", "--subs-only", domain], 90))
+    steps.append(("findomain", ["findomain", "-t", domain, "-q"], 120))
+    if not quick:
+        steps.append(("amass", ["amass", "enum", "-passive", "-d", domain], 180))
+        steps.append(("sublist3r", ["sublist3r", "-d", domain, "-n"], 120))
+        steps.append(("chaos", ["chaos", "-d", domain, "-silent"], 60))
+        steps.append(("dnstwist", ["dnstwist", "-r", "-f", "json", domain], 180))
+        steps.append(("gau", ["gau", "--subs", domain], 90))
+        # waybackurls reads domains on stdin; the domain is not an argv flag.
+        steps.append(("waybackurls", ["waybackurls"], 90))
+        steps.append(("urlfinder", ["urlfinder", "-d", domain, "-silent", "-max-time", "2"], 150))
     steps.append(
         (
             "theHarvester",
@@ -343,8 +396,30 @@ def passive_steps(domain: str, *, quick: bool = False) -> list[tuple[str, list[s
     return steps
 
 
+def _chaos_skip(domain: str) -> ToolRun | None:
+    if which("chaos") is None or chaos_key():
+        return None
+    return ToolRun(
+        name="chaos",
+        status="skipped",
+        command=["chaos", "-d", domain, "-silent"],
+        reason="no Chaos API key (CHAOS_KEY or PDCP_API_KEY)",
+    )
+
+
 def plan_passive(domain: str, *, quick: bool = False) -> list[ToolRun]:
-    return [planned(name, argv) for name, argv, _timeout in passive_steps(domain, quick=quick)]
+    runs: list[ToolRun] = []
+    for name, argv, _timeout in passive_steps(domain, quick=quick):
+        if name == "chaos":
+            skipped = _chaos_skip(domain)
+            if skipped is not None:
+                runs.append(skipped)
+                continue
+        tool = planned(name, argv)
+        if name == "waybackurls" and tool.status == "planned":
+            tool.reason = f"stdin {domain}"
+        runs.append(tool)
+    return runs
 
 
 def run_passive(
@@ -358,9 +433,25 @@ def run_passive(
     parse_dns = _parse_dig if which("dig") else _parse_host
 
     for name, argv, timeout in passive_steps(domain, quick=quick):
-        tool = _step(name, argv, timeout, runner)
+        if name == "chaos":
+            skipped = _chaos_skip(domain)
+            if skipped is not None:
+                engagement.tools.append(skipped)
+                continue
+        stdin = (domain + "\n") if name == "waybackurls" else None
+        tool = _step(name, argv, timeout, runner, stdin=stdin)
         engagement.tools.append(tool)
+        if name == "waybackurls" and tool.status == "ran" and not tool.reason:
+            tool.reason = f"stdin {domain}"
         if tool.status != "ran" or not tool.output:
+            continue
+        if name in URL_SOURCES:
+            room = MAX_URLS - len(engagement.urls)
+            kept = scoped_urls(tool.output, domain, limit=room)
+            tool.output = "\n".join(kept)
+            engagement.urls = _unique([*engagement.urls, *kept])[:MAX_URLS]
+            note = f"{len(kept)} in-scope URLs kept"
+            tool.reason = f"{tool.reason}; {note}" if tool.reason else note
             continue
         if name == "whois":
             engagement.whois_raw = tool.output
